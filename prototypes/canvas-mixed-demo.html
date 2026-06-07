@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Meridian — Mixed Canvas</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #07090f; --surface: #0d1017; --card: #121820; --border: #1b2336;
+      --accent: #f0b429; --blue: #53aaff; --green: #3ecf7e;
+      --purple: #9b79e8; --rose: #f77171; --text: #d6e2f5; --muted: #56687f; --dim: #243044;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-serif; display: flex; height: 100vh; overflow: hidden; }
+
+    /* Sidebar */
+    .sb { width: 200px; min-width: 200px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 10; }
+    .logo { padding: 18px 16px 14px; border-bottom: 1px solid var(--border); }
+    .logo h1 { font-size: 17px; font-weight: 800; letter-spacing: .1em; color: var(--accent); }
+    .logo p { font-family: 'IBM Plex Mono', monospace; font-size: 8px; letter-spacing: .2em; color: var(--muted); margin-top: 2px; }
+    .badge { display: inline-block; margin-top: 8px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--accent); background: rgba(240,180,41,.1); border: 1px solid rgba(240,180,41,.25); border-radius: 4px; padding: 2px 7px; }
+    .sec { font-family: 'IBM Plex Mono', monospace; font-size: 8px; letter-spacing: .15em; color: var(--muted); text-transform: uppercase; padding: 12px 16px 7px; }
+    .goal-row { display: flex; align-items: center; gap: 8px; padding: 7px 16px; cursor: pointer; transition: background .15s; border-radius: 0; }
+    .goal-row:hover { background: var(--card); }
+    .goal-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .goal-name { font-size: 11px; font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .focus-toggle { width: 20px; height: 20px; border-radius: 4px; border: 1px solid var(--border); background: var(--card); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 9px; transition: all .15s; flex-shrink: 0; }
+    .focus-toggle.on { background: rgba(240,180,41,.15); border-color: rgba(240,180,41,.5); color: var(--accent); }
+    .focus-hint { font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--muted); padding: 8px 16px 12px; line-height: 1.6; }
+    .sb-btns { padding: 10px 12px; margin-top: auto; display: flex; flex-direction: column; gap: 6px; }
+    .sb-btn { padding: 8px 12px; border-radius: 6px; font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 700; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--muted); text-align: left; transition: all .15s; }
+    .sb-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .sb-btn.pri { background: rgba(240,180,41,.08); border-color: rgba(240,180,41,.3); color: var(--accent); }
+    .sb-btn.pri:hover { background: rgba(240,180,41,.16); }
+
+    /* Canvas */
+    .cv { flex: 1; position: relative; overflow: hidden; cursor: grab; }
+    .cv:active { cursor: grabbing; }
+    canvas { position: absolute; top: 0; left: 0; }
+
+    /* Info chip */
+    .chip { position: absolute; bottom: 16px; right: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--muted); line-height: 1.7; pointer-events: none; }
+    .chip span { color: var(--accent); }
+  </style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<aside class="sb">
+  <div class="logo">
+    <h1>MERIDIAN</h1>
+    <p>NAVIGATE YOUR GROWTH</p>
+    <span class="badge">mixed canvas demo</span>
+  </div>
+  <div class="sec">goals</div>
+  <div id="goal-list"></div>
+  <div class="focus-hint">Toggle ✦ to mark a goal as Today's Focus</div>
+  <div class="sb-btns">
+    <button class="sb-btn pri" id="btn-add">+ Add Sample Goal</button>
+    <button class="sb-btn" id="btn-remove">− Remove Last Goal</button>
+    <button class="sb-btn" id="btn-reset">⟳ Reset Pan</button>
+  </div>
+</aside>
+
+<!-- Canvas -->
+<div class="cv" id="wrap">
+  <canvas id="cv"></canvas>
+  <div class="chip">
+    drag to <span>pan</span> · ✦ = <span>today's focus</span> · orbits = <span>subtasks</span> · ◇ = <span>checkpoints</span>
+  </div>
+</div>
+
+<script>
+// ─── Color helpers ────────────────────────────────────────────
+const C = { bg:'#07090f', surface:'#0d1017', card:'#121820', border:'#1b2336', accent:'#f0b429', blue:'#53aaff', green:'#3ecf7e', purple:'#9b79e8', rose:'#f77171', text:'#d6e2f5', muted:'#56687f', dim:'#243044' };
+const PAL = ['#f0b429','#53aaff','#3ecf7e','#9b79e8','#f77171','#fb923c'];
+
+function rgba(hex, a) {
+  const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+function rgb(hex) {
+  return { r:parseInt(hex.slice(1,3),16), g:parseInt(hex.slice(3,5),16), b:parseInt(hex.slice(5,7),16) };
+}
+
+// ─── Goal data ────────────────────────────────────────────────
+let goals = [
+  {
+    id:'g1', label:'Prepare Handshake', color:PAL[0], progress:.25, inFocus:true,
+    x:-200, y:-30,
+    subtasks: [
+      {label:'Research platform', done:false,  ao:0},
+      {label:'Mock interview',    done:false,   ao:Math.PI*.5},
+      {label:'Polish resume',     done:true,    ao:Math.PI},
+      {label:'Prep questions',    done:false,   ao:Math.PI*1.5},
+    ],
+    checkpoints: [{label:'First Interview', done:false, ao:Math.PI*.25}],
+  },
+  {
+    id:'g2', label:'Learn React', color:PAL[1], progress:.6, inFocus:false,
+    x:230, y:-70,
+    subtasks: [
+      {label:'Hooks',        done:true,  ao:0},
+      {label:'Context API',  done:true,  ao:Math.PI*.67},
+      {label:'Performance',  done:false, ao:Math.PI*1.33},
+    ],
+    checkpoints: [{label:'Ship a project', done:false, ao:Math.PI*1.1}],
+  },
+  {
+    id:'g3', label:'Health Goals', color:PAL[2], progress:.45, inFocus:false,
+    x:40, y:230,
+    subtasks: [
+      {label:'Morning run',    done:true,  ao:0},
+      {label:'Meal prep',      done:false, ao:Math.PI*.5},
+      {label:'Sleep schedule', done:false, ao:Math.PI},
+    ],
+    checkpoints: [],
+  },
+];
+
+const extraGoals = [
+  { label:'Build Portfolio', color:PAL[3], progress:.1,  x:-350, y:150, subtasks:[{label:'Design',done:false,ao:0},{label:'Code',done:false,ao:Math.PI},{label:'Deploy',done:false,ao:Math.PI*1.5}], checkpoints:[] },
+  { label:'Read 12 Books',   color:PAL[4], progress:.33, x:400,  y:160, subtasks:[{label:'Book 1',done:true,ao:0},{label:'Book 2',done:false,ao:Math.PI*.67},{label:'Book 3',done:false,ao:Math.PI*1.33}], checkpoints:[] },
+  { label:'Learn Spanish',   color:PAL[5], progress:.05, x:-60,  y:-250,subtasks:[{label:'Duolingo',done:false,ao:0},{label:'Podcast',done:false,ao:Math.PI},{label:'Practice',done:false,ao:Math.PI*1.5}], checkpoints:[] },
+];
+let extraIdx = 0;
+
+// ─── Stars (fixed, background layer) ─────────────────────────
+let stars = [];
+function mkStars(w, h, dpr) {
+  stars = [];
+  for (let i = 0; i < 42; i++) stars.push({
+    x: Math.random() * w / dpr,
+    y: Math.random() * h / dpr,
+    s: Math.random() * 1.4 + .25,
+    base: Math.random() * .18 + .03,
+    ts: Math.random() * 1.2 + .3,
+    to: Math.random() * Math.PI * 2,
+  });
+}
+
+// ─── Canvas setup ─────────────────────────────────────────────
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('wrap');
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = wrap.getBoundingClientRect();
+  canvas.width  = rect.width  * dpr;
+  canvas.height = rect.height * dpr;
+  canvas.style.width  = rect.width  + 'px';
+  canvas.style.height = rect.height + 'px';
+  mkStars(canvas.width, canvas.height, dpr);
+}
+resize();
+new ResizeObserver(resize).observe(wrap);
+
+// ─── Pan state ────────────────────────────────────────────────
+let pan = {x:0, y:0}, dragging = false, ds = {x:0,y:0}, ps = {x:0,y:0};
+canvas.addEventListener('mousedown', e => { dragging=true; ds={x:e.clientX,y:e.clientY}; ps={...pan}; });
+window.addEventListener('mousemove', e => { if(!dragging) return; pan.x=ps.x+(e.clientX-ds.x); pan.y=ps.y+(e.clientY-ds.y); });
+window.addEventListener('mouseup',   () => dragging=false);
+
+// ─── Draw helpers ─────────────────────────────────────────────
+function glow(ctx, x, y, R, color, alpha) {
+  const {r,g,b} = rgb(color);
+  const gr = ctx.createRadialGradient(x,y,0,x,y,R*3.2);
+  gr.addColorStop(0,   `rgba(${r},${g},${b},${alpha})`);
+  gr.addColorStop(.4,  `rgba(${r},${g},${b},${alpha*.35})`);
+  gr.addColorStop(1,   `rgba(${r},${g},${b},0)`);
+  ctx.save(); ctx.beginPath(); ctx.arc(x,y,R*3.2,0,Math.PI*2);
+  ctx.fillStyle=gr; ctx.fill(); ctx.restore();
+}
+
+function progressArc(ctx, x, y, R, pct, color, dpr) {
+  const circ = Math.PI * 2;
+  ctx.save();
+  ctx.beginPath(); ctx.arc(x,y,R,-Math.PI/2,Math.PI*3/2);
+  ctx.strokeStyle=rgba(color,.18); ctx.lineWidth=3*dpr; ctx.stroke();
+  if(pct > 0) {
+    ctx.beginPath(); ctx.arc(x,y,R,-Math.PI/2,-Math.PI/2+circ*pct);
+    ctx.strokeStyle=color; ctx.lineWidth=3*dpr; ctx.lineCap='round'; ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function subtaskNode(ctx, x, y, R, color, done, dpr) {
+  ctx.save();
+  ctx.beginPath(); ctx.arc(x,y,R,0,Math.PI*2);
+  ctx.fillStyle = done ? rgba(color,.22) : C.card; ctx.fill();
+  ctx.beginPath(); ctx.arc(x,y,R,0,Math.PI*2);
+  ctx.strokeStyle = done ? color : rgba(color,.42);
+  ctx.lineWidth = done ? 1.5*dpr : 1*dpr;
+  if(!done) ctx.setLineDash([3*dpr,3*dpr]);
+  ctx.stroke(); ctx.setLineDash([]);
+  if(done) {
+    ctx.beginPath(); ctx.moveTo(x-4*dpr,y); ctx.lineTo(x-1*dpr,y+3*dpr); ctx.lineTo(x+5*dpr,y-3*dpr);
+    ctx.strokeStyle=color; ctx.lineWidth=1.5*dpr; ctx.lineCap='round'; ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function checkpointNode(ctx, x, y, sz, color, done, dpr) {
+  ctx.save(); ctx.translate(x,y); ctx.rotate(Math.PI/4);
+  ctx.beginPath(); ctx.rect(-sz/2,-sz/2,sz,sz);
+  ctx.fillStyle = done ? rgba(color,.2) : C.card; ctx.fill();
+  ctx.strokeStyle = done ? color : rgba(color,.45);
+  ctx.lineWidth = 1.5*dpr; ctx.stroke();
+  ctx.restore();
+  if(done) {
+    ctx.save(); ctx.beginPath();
+    ctx.moveTo(x-3*dpr,y); ctx.lineTo(x-1*dpr,y+2*dpr); ctx.lineTo(x+4*dpr,y-3*dpr);
+    ctx.strokeStyle=color; ctx.lineWidth=1.5*dpr; ctx.lineCap='round'; ctx.stroke(); ctx.restore();
+  }
+}
+
+// ─── Empty state ──────────────────────────────────────────────
+let emptyTextAlpha = 0;
+let emptyTextTarget = 0;
+
+// ─── Main render loop ─────────────────────────────────────────
+let t = 0;
+function frame() {
+  t += .016;
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.width, h = canvas.height;
+  const cx = w/2 + pan.x * dpr;
+  const cy = h/2 + pan.y * dpr;
+
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = C.bg; ctx.fillRect(0,0,w,h);
+
+  // ── Star field (fixed, ignores pan) ──
+  stars.forEach(s => {
+    const tw = .5 + .5 * Math.sin(t * s.ts + s.to);
+    ctx.save(); ctx.beginPath(); ctx.arc(s.x*dpr, s.y*dpr, s.s*dpr, 0, Math.PI*2);
+    ctx.fillStyle = `rgba(214,226,245,${s.base * (.3 + .7*tw)})`; ctx.fill(); ctx.restore();
+  });
+
+  // ── Empty state ──
+  emptyTextTarget = goals.length === 0 ? 1 : 0;
+  emptyTextAlpha += (emptyTextTarget - emptyTextAlpha) * .04;
+
+  if(emptyTextAlpha > .01) {
+    const pulse = .5 + .5 * Math.sin(t * 1.6);
+    const {r,g,b} = rgb(C.accent);
+    const glR = (65 + pulse*22) * dpr;
+    const egr = ctx.createRadialGradient(w/2,h/2,0,w/2,h/2,glR);
+    egr.addColorStop(0, `rgba(${r},${g},${b},${(.13+pulse*.08)*emptyTextAlpha})`);
+    egr.addColorStop(.5,`rgba(${r},${g},${b},${(.04+pulse*.03)*emptyTextAlpha})`);
+    egr.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    ctx.save(); ctx.beginPath(); ctx.arc(w/2,h/2,glR,0,Math.PI*2);
+    ctx.fillStyle=egr; ctx.fill(); ctx.restore();
+
+    ctx.save(); ctx.beginPath(); ctx.arc(w/2,h/2,(6+pulse*3)*dpr,0,Math.PI*2);
+    ctx.fillStyle=rgba(C.accent,emptyTextAlpha); ctx.fill(); ctx.restore();
+
+    ctx.save(); ctx.beginPath(); ctx.arc(w/2,h/2,(17+pulse*6)*dpr,0,Math.PI*2);
+    ctx.strokeStyle=`rgba(${r},${g},${b},${(.28+pulse*.18)*emptyTextAlpha})`;
+    ctx.lineWidth=1.5*dpr; ctx.stroke(); ctx.restore();
+
+    if(emptyTextAlpha > .3) {
+      ctx.save(); ctx.globalAlpha = Math.max(0, (emptyTextAlpha-.3)/.7);
+      ctx.font=`bold ${14*dpr}px 'Syne',sans-serif`; ctx.fillStyle=C.text;
+      ctx.textAlign='center'; ctx.textBaseline='top';
+      ctx.fillText('Your journey starts here', w/2, h/2+44*dpr);
+      ctx.font=`${10*dpr}px 'IBM Plex Mono',monospace`; ctx.fillStyle=C.muted;
+      ctx.fillText('Add a goal to begin navigating your growth', w/2, h/2+66*dpr);
+      ctx.restore();
+    }
+  }
+
+  // ── Goal clusters ──
+  goals.forEach(goal => {
+    const gx = cx + goal.x * dpr;
+    const gy = cy + goal.y * dpr;
+    const R  = 40 * dpr;
+    const SUB_ORB  = 88 * dpr;
+    const CP_ORB   = 132 * dpr;
+    const SUB_SPD  = .007;   // full orbit ≈ 90s
+    const CP_SPD   = .0035;
+
+    // ── Orbit rings (very faint guide lines) ──
+    [SUB_ORB, CP_ORB].forEach((r, ri) => {
+      ctx.save(); ctx.beginPath(); ctx.arc(gx,gy,r,0,Math.PI*2);
+      ctx.strokeStyle = rgba(ri===0?goal.color:C.muted, .06);
+      ctx.lineWidth=1*dpr; ctx.setLineDash([3*dpr,6*dpr]); ctx.stroke();
+      ctx.setLineDash([]); ctx.restore();
+    });
+
+    // ── Today's Focus halo ──
+    if(goal.inFocus) {
+      const fp = .5 + .5 * Math.sin(t * 2.4 + goals.indexOf(goal));
+      const haloR = R + (14 + fp*8) * dpr;
+      ctx.save(); ctx.beginPath(); ctx.arc(gx,gy,haloR,0,Math.PI*2);
+      ctx.strokeStyle = rgba(C.accent, .2+fp*.18); ctx.lineWidth=2*dpr; ctx.stroke();
+      ctx.restore();
+      // "TODAY" label above node
+      ctx.save(); ctx.font=`${8*dpr}px 'IBM Plex Mono',monospace`;
+      ctx.fillStyle=rgba(C.accent,.7+fp*.3); ctx.textAlign='center'; ctx.textBaseline='bottom';
+      ctx.fillText('TODAY', gx, gy - R - 18*dpr); ctx.restore();
+    }
+
+    // ── Glow ──
+    glow(ctx, gx, gy, R, goal.color, goal.inFocus ? .32 : .18);
+
+    // ── Subtask connections + orbiting nodes ──
+    goal.subtasks.forEach((st, si) => {
+      const angle = st.ao + t * SUB_SPD * 60;
+      const sx = gx + Math.cos(angle) * SUB_ORB;
+      const sy = gy + Math.sin(angle) * SUB_ORB;
+      // connection line
+      ctx.save(); ctx.beginPath(); ctx.moveTo(gx,gy); ctx.lineTo(sx,sy);
+      ctx.strokeStyle=rgba(goal.color, st.done?.25:.1); ctx.lineWidth=1*dpr;
+      ctx.setLineDash([3*dpr,4*dpr]); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+      subtaskNode(ctx, sx, sy, 12*dpr, goal.color, st.done, dpr);
+      // label
+      const lx = sx + Math.cos(angle) * 18*dpr;
+      const ly = sy + Math.sin(angle) * 18*dpr;
+      ctx.save(); ctx.font=`${8*dpr}px 'IBM Plex Mono',monospace`;
+      ctx.fillStyle=rgba(C.muted,.7); ctx.textAlign='center'; ctx.textBaseline='middle';
+      const short = st.label.length>11 ? st.label.slice(0,10)+'…' : st.label;
+      ctx.fillText(short, lx, ly); ctx.restore();
+    });
+
+    // ── Checkpoint connections + orbiting diamonds ──
+    goal.checkpoints.forEach((cp) => {
+      const angle = cp.ao + t * CP_SPD * 60;
+      const sx = gx + Math.cos(angle) * CP_ORB;
+      const sy = gy + Math.sin(angle) * CP_ORB;
+      ctx.save(); ctx.beginPath(); ctx.moveTo(gx,gy); ctx.lineTo(sx,sy);
+      ctx.strokeStyle=rgba(C.blue, cp.done?.28:.14); ctx.lineWidth=1*dpr; ctx.stroke(); ctx.restore();
+      checkpointNode(ctx, sx, sy, 18*dpr, C.blue, cp.done, dpr);
+      const lx = sx + Math.cos(angle) * 18*dpr;
+      const ly = sy + Math.sin(angle) * 18*dpr;
+      ctx.save(); ctx.font=`${8*dpr}px 'IBM Plex Mono',monospace`;
+      ctx.fillStyle=rgba(C.blue,.6); ctx.textAlign='center'; ctx.textBaseline='middle';
+      const short = cp.label.length>11 ? cp.label.slice(0,10)+'…' : cp.label;
+      ctx.fillText(short, lx, ly); ctx.restore();
+    });
+
+    // ── Progress arc ──
+    progressArc(ctx, gx, gy, R, goal.progress, goal.color, dpr);
+
+    // ── Main node fill ──
+    ctx.save(); ctx.beginPath(); ctx.arc(gx,gy,R-3*dpr,0,Math.PI*2);
+    ctx.fillStyle=rgba(goal.color, goal.inFocus?.12:.07); ctx.fill(); ctx.restore();
+
+    // ── Label inside node ──
+    ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.font=`bold ${9*dpr}px 'Syne',sans-serif`; ctx.fillStyle=goal.color;
+    const nameShort = goal.label.length>10 ? goal.label.slice(0,9)+'…' : goal.label;
+    ctx.fillText(nameShort, gx, gy-6*dpr);
+    ctx.font=`${8*dpr}px 'IBM Plex Mono',monospace`; ctx.fillStyle=rgba(goal.color,.75);
+    ctx.fillText(Math.round(goal.progress*100)+'%', gx, gy+7*dpr);
+    ctx.restore();
+  });
+
+  requestAnimationFrame(frame);
+}
+frame();
+
+// ─── Sidebar goal list ─────────────────────────────────────────
+function renderSidebar() {
+  const list = document.getElementById('goal-list');
+  list.innerHTML = '';
+  if(goals.length === 0) {
+    list.innerHTML = `<div style="padding:10px 16px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted)">No goals yet</div>`;
+    return;
+  }
+  goals.forEach((g, i) => {
+    const row = document.createElement('div');
+    row.className = 'goal-row';
+    row.innerHTML = `
+      <div class="goal-dot" style="background:${g.color}"></div>
+      <span class="goal-name">${g.label}</span>
+      <button class="focus-toggle ${g.inFocus?'on':''}" data-i="${i}" title="Toggle Today's Focus">✦</button>
+    `;
+    list.appendChild(row);
+  });
+  document.querySelectorAll('.focus-toggle').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const i = +e.target.dataset.i;
+      goals[i].inFocus = !goals[i].inFocus;
+      renderSidebar();
+    });
+  });
+}
+renderSidebar();
+
+// ─── Buttons ──────────────────────────────────────────────────
+document.getElementById('btn-add').addEventListener('click', () => {
+  if(extraIdx >= extraGoals.length) return;
+  const base = extraGoals[extraIdx++];
+  goals.push({ ...base, id: 'ex'+extraIdx, inFocus: false });
+  renderSidebar();
+});
+document.getElementById('btn-remove').addEventListener('click', () => {
+  if(!goals.length) return;
+  goals.pop();
+  if(extraIdx > 0) extraIdx--;
+  renderSidebar();
+});
+document.getElementById('btn-reset').addEventListener('click', () => { pan={x:0,y:0}; });
+</script>
+</body>
+</html>

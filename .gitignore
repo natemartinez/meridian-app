@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.vite/
+*.log
+.env
+.env.local
+.DS_Store
+Thumbs.db
+desktop.ini
+CLAUDE_CODE_PROMPT.md
+deepseek-api
+prompt
+.claude/
+docs/

@@ -1,0 +1,391 @@
+
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+.mrd{display:flex;height:600px;background:#07090f;border-radius:12px;overflow:hidden;border:1px solid #1b2336;font-family:'IBM Plex Mono',monospace;}
+
+/* ─ SIGNAL ─ */
+.sig{width:180px;flex-shrink:0;background:#0d1017;border-right:1px solid #1b2336;display:flex;flex-direction:column;overflow:hidden;}
+.sig-logo{padding:14px 13px 11px;border-bottom:1px solid #1b2336;}
+.sig-brand{font-size:15px;font-weight:700;color:#f0b429;letter-spacing:.14em;}
+.sig-subt{font-size:7px;color:#56687f;letter-spacing:.18em;text-transform:uppercase;margin-top:3px;}
+.sec{padding:10px 11px 6px;}
+.secl{font-size:7.5px;color:#56687f;text-transform:uppercase;letter-spacing:.12em;display:flex;align-items:center;gap:5px;margin-bottom:8px;}
+.pip{width:5px;height:5px;border-radius:50%;flex-shrink:0;}
+.fci{display:flex;align-items:center;gap:7px;padding:6px 7px;background:#121820;border-radius:6px;margin-bottom:4px;cursor:pointer;border:1px solid transparent;transition:all .14s;}
+.fci:hover{border-color:#2a3a54;}
+.fci.sel{border-color:#f0b42950;background:#f0b42908;}
+.fci-ico{width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.fci-txt{font-size:10.5px;color:#d6e2f5;line-height:1.25;}
+.grl{display:flex;align-items:center;gap:7px;padding:6px 7px;border-radius:6px;cursor:pointer;border:1px solid transparent;transition:all .14s;margin-bottom:3px;}
+.grl:hover{background:#121820;}
+.grl.sel{background:#121820;border-color:#f0b42940;}
+.gr-pip{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.gr-nm{font-size:10.5px;color:#d6e2f5;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.gr-pc{font-size:9.5px;color:#56687f;}
+.sig-add{margin:5px 11px 7px;padding:7px;background:#f0b42912;border:1px solid #f0b42930;border-radius:6px;color:#f0b429;font-size:10.5px;text-align:center;cursor:pointer;letter-spacing:.04em;}
+.sig-nav{display:flex;border-top:1px solid #1b2336;background:#0a0d14;margin-top:auto;}
+.nb{flex:1;padding:9px 2px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;}
+.ni{width:27px;height:27px;border-radius:6px;display:flex;align-items:center;justify-content:center;transition:background .14s;}
+.nl{font-size:7px;letter-spacing:.06em;text-transform:uppercase;color:#56687f;transition:color .14s;}
+.nb.on .nl{color:#f0b429;}
+.nb.on .ni{background:#f0b42912;}
+
+/* ─ COMMAND ─ */
+.cmd{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;}
+.ctb{padding:11px 14px;border-bottom:1px solid #1b2336;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.cttl{font-size:14px;color:#f0b429;font-weight:700;letter-spacing:.1em;}
+.cdt{font-size:9px;color:#56687f;margin-top:2px;}
+.cbtn{padding:6px 11px;background:#f0b42912;border:1px solid #f0b42930;border-radius:20px;color:#f0b429;font-size:9.5px;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.04em;white-space:nowrap;}
+.cbody{flex:1;overflow:hidden;padding:11px 12px;display:flex;flex-direction:column;gap:9px;}
+.sg{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;flex-shrink:0;}
+.sc{background:#121820;border:1px solid #1b2336;border-radius:7px;padding:9px 10px;cursor:pointer;transition:border-color .14s,background .14s;}
+.sc:hover{border-color:#2a3a54;}
+.sc.sel{border-color:#ffffff18;background:#0d1424;}
+.sc-ir{display:flex;align-items:center;gap:6px;margin-bottom:4px;}
+.sc-ico{width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.sc-lbl{font-size:7.5px;color:#56687f;text-transform:uppercase;letter-spacing:.09em;}
+.sc-val{font-size:20px;font-weight:700;line-height:1;color:#d6e2f5;}
+.sc-sub{font-size:8px;color:#56687f;margin-top:2px;}
+.blkh{font-size:7.5px;color:#56687f;text-transform:uppercase;letter-spacing:.11em;margin-bottom:6px;}
+.tb{display:flex;gap:7px;align-items:flex-start;margin-bottom:5px;}
+.tbt{font-size:9.5px;color:#56687f;width:28px;flex-shrink:0;padding-top:4px;}
+.tbc{flex:1;border-radius:7px;padding:7px 10px;border-left:3px solid;cursor:pointer;transition:filter .14s,outline .13s;}
+.tbc:hover{filter:brightness(1.07);}
+.tbc.sel{outline:1px solid #ffffff16;}
+.tbn{font-size:11.5px;color:#d6e2f5;line-height:1.3;}
+.tbg{font-size:8.5px;margin-top:2px;}
+.ph{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:10px;padding-bottom:40px;}
+.ph-ico{width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;}
+.ph-ttl{font-size:15px;font-weight:700;letter-spacing:.1em;}
+.ph-sub{font-size:10.5px;color:#56687f;text-align:center;max-width:190px;line-height:1.6;}
+
+/* ─ WAYPOINT ─ */
+.wp{width:0;flex-shrink:0;overflow:hidden;background:#0d1017;display:flex;transition:width .4s cubic-bezier(.4,0,.2,1);}
+.wp.open{width:244px;border-left:1px solid #1b2336;}
+.wpi{width:244px;flex-shrink:0;display:flex;flex-direction:column;height:100%;overflow:hidden;}
+
+/* WP: top accent bar (color changes with selection) */
+.wp-accent{height:3px;flex-shrink:0;transition:background .25s;}
+
+.wp-hd{padding:13px 13px 10px;border-bottom:1px solid #1b2336;flex-shrink:0;position:relative;}
+.wp-close{position:absolute;top:9px;right:9px;width:20px;height:20px;border-radius:4px;background:#1b2336;display:flex;align-items:center;justify-content:center;cursor:pointer;border:none;font-family:monospace;font-size:12px;color:#56687f;line-height:1;transition:all .13s;}
+.wp-close:hover{background:#2a3a54;color:#d6e2f5;}
+.wp-badge{font-size:7.5px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:7px;display:flex;align-items:center;gap:5px;}
+.wp-ttl{font-size:14px;font-weight:700;letter-spacing:.04em;line-height:1.2;margin-bottom:4px;padding-right:24px;}
+.wp-dsc{font-size:10.5px;color:#56687f;line-height:1.5;}
+
+.wp-pg{padding:9px 13px;border-bottom:1px solid #1b2336;flex-shrink:0;}
+.wp-pgr{display:flex;justify-content:space-between;font-size:8.5px;color:#56687f;margin-bottom:4px;}
+.wp-pgtr{height:5px;background:#1b2336;border-radius:3px;overflow:hidden;}
+.wp-pgf{height:100%;border-radius:3px;transition:width .4s;}
+
+.wp-bdy{flex:1;overflow-y:auto;overflow-x:hidden;padding:9px 13px 4px;}
+.wp-bdy::-webkit-scrollbar{width:3px;}
+.wp-bdy::-webkit-scrollbar-thumb{background:#1b2336;border-radius:2px;}
+.wsh{font-size:7.5px;color:#56687f;text-transform:uppercase;letter-spacing:.11em;margin:10px 0 5px;display:flex;align-items:center;gap:4px;}
+.wsh:first-child{margin-top:0;}
+.wti{display:flex;align-items:flex-start;gap:7px;padding:5px 0;border-bottom:1px solid #1b233440;}
+.wck{width:14px;height:14px;border-radius:3px;border:1.5px solid #2a3a54;flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;}
+.wck.done{background:#3ecf7e18;border-color:#3ecf7e;}
+.wtx{font-size:10.5px;color:#d6e2f5;line-height:1.35;}
+.wtx.dn{color:#56687f;text-decoration:line-through;}
+.wdm{width:14px;height:14px;border-radius:2.5px;border:1.5px solid #53aaff40;flex-shrink:0;margin-top:1px;transform:rotate(45deg);display:flex;align-items:center;justify-content:center;}
+.wdm.done{border-color:#53aaff;background:#53aaff18;}
+
+/* WP: AI Companion card */
+.wp-ai{margin:8px 12px 12px;border-radius:9px;overflow:hidden;flex-shrink:0;border:1px solid #53aaff25;transition:border-color .25s;}
+.wp-ai-h{padding:9px 12px 7px;border-bottom:1px solid #1b2336;display:flex;align-items:center;gap:8px;background:#53aaff06;transition:background .25s;}
+.wp-ai-orb{width:28px;height:28px;border-radius:50%;border:1.5px solid #53aaff50;background:#53aaff12;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .25s;}
+.wp-ai-txt{flex:1;}
+.wp-ai-lbl{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#53aaff;transition:color .25s;}
+.wp-ai-sub{font-size:8.5px;color:#56687f;margin-top:1px;}
+.wp-ai-dot{width:7px;height:7px;border-radius:50%;background:#3ecf7e;flex-shrink:0;}
+.wp-ai-b{padding:9px 12px;background:#121820;}
+.wp-ai-msg{font-size:10.5px;color:#d6e2f5;line-height:1.65;font-style:italic;}
+.wp-ai-btns{display:flex;gap:5px;margin-top:8px;}
+.waib{flex:1;padding:6px 4px;border-radius:6px;font-size:8.5px;text-align:center;cursor:pointer;letter-spacing:.03em;text-transform:uppercase;font-family:'IBM Plex Mono',monospace;border:1px solid;transition:filter .13s;}
+.waib:hover{filter:brightness(1.1);}
+
+/* Awaiting hint shown briefly before selection */
+.wp-awaiting{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:8px;opacity:.4;padding-bottom:20px;}
+.wp-await-ico{width:38px;height:38px;border-radius:10px;background:#1b2336;display:flex;align-items:center;justify-content:center;}
+.wp-await-txt{font-size:9.5px;color:#56687f;text-align:center;line-height:1.6;max-width:140px;}
+</style>
+
+<div class="mrd">
+
+  <!-- ═══ SIGNAL ═══ -->
+  <div class="sig">
+    <div class="sig-logo">
+      <div class="sig-brand">MERIDIAN</div>
+      <div class="sig-subt">Navigate Your Growth</div>
+    </div>
+
+    <div class="sec">
+      <div class="secl"><span class="pip" style="background:#f0b429;"></span>Today's Focus</div>
+      <div class="fci" id="el-focus-1" onclick="sel('focus-1')">
+        <div class="fci-ico" style="background:#f0b42918;border:1px solid #f0b42938;">
+          <svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.5" fill="none" stroke="#f0b429" stroke-width="1.3"/><path d="M6 3.5v2.5l1.8 1.1" fill="none" stroke="#f0b429" stroke-width="1.3" stroke-linecap="round"/></svg>
+        </div>
+        <div class="fci-txt">Complete Stellar revision</div>
+      </div>
+      <div class="fci" id="el-focus-2" onclick="sel('focus-2')">
+        <div class="fci-ico" style="background:#53aaff18;border:1px solid #53aaff38;">
+          <svg width="12" height="12" viewBox="0 0 12 12"><rect x="2.5" y="5.5" width="7" height="5" rx="1.2" fill="none" stroke="#53aaff" stroke-width="1.3"/><path d="M4 5.5V4a2 2 0 014 0v1.5" fill="none" stroke="#53aaff" stroke-width="1.3" stroke-linecap="round"/></svg>
+        </div>
+        <div class="fci-txt">Finish Alignerr test</div>
+      </div>
+      <div class="fci" id="el-focus-3" onclick="sel('focus-3')">
+        <div class="fci-ico" style="background:#3ecf7e18;border:1px solid #3ecf7e38;">
+          <svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 3v5.5M4 6.5L6 8.5l2-2" fill="none" stroke="#3ecf7e" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.5 4.5A3 3 0 016 2a3 3 0 012.5 1.5" fill="none" stroke="#3ecf7e" stroke-width="1.3" stroke-linecap="round"/></svg>
+        </div>
+        <div class="fci-txt">Handshake onboarding</div>
+      </div>
+    </div>
+
+    <div class="sec" style="flex:1;overflow:hidden;">
+      <div class="secl"><span class="pip" style="background:#9b79e8;"></span>Goals</div>
+      <div class="grl" id="el-goal-stellar" onclick="sel('goal-stellar')">
+        <div class="gr-pip" style="background:#f0b429;"></div>
+        <div class="gr-nm">Stellar Revision</div>
+        <div class="gr-pc">72%</div>
+      </div>
+      <div class="grl" id="el-goal-alignerr" onclick="sel('goal-alignerr')">
+        <div class="gr-pip" style="background:#53aaff;"></div>
+        <div class="gr-nm">Alignerr Launch</div>
+        <div class="gr-pc">48%</div>
+      </div>
+      <div class="grl" id="el-goal-portfolio" onclick="sel('goal-portfolio')">
+        <div class="gr-pip" style="background:#3ecf7e;"></div>
+        <div class="gr-nm">Portfolio Site</div>
+        <div class="gr-pc">20%</div>
+      </div>
+    </div>
+
+    <div class="sig-add">+ New Goal</div>
+
+    <div class="sig-nav">
+      <div class="nb on" onclick="changePage('hq',this)">
+        <div class="ni">
+          <svg width="16" height="16" viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1.2" fill="#f0b429"/><rect x="9" y="1.5" width="5.5" height="5.5" rx="1.2" fill="#f0b429" opacity=".55"/><rect x="1.5" y="9" width="5.5" height="5.5" rx="1.2" fill="#f0b429" opacity=".55"/><rect x="9" y="9" width="5.5" height="5.5" rx="1.2" fill="#f0b429" opacity=".35"/></svg>
+        </div>
+        <div class="nl">HQ</div>
+      </div>
+      <div class="nb" onclick="changePage('tracking',this)">
+        <div class="ni">
+          <svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 12 L5.5 7 L9 10 L14 4" fill="none" stroke="#53aaff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="14" cy="4" r="1.8" fill="#53aaff"/></svg>
+        </div>
+        <div class="nl">Track</div>
+      </div>
+      <div class="nb" onclick="changePage('settings',this)">
+        <div class="ni">
+          <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" fill="none" stroke="#9b79e8" stroke-width="1.6"/><circle cx="8" cy="8" r="2" fill="#9b79e8"/><path d="M8 2.5v1M8 12.5v1M2.5 8h1M12.5 8h1" stroke="#9b79e8" stroke-width="1.4" stroke-linecap="round"/></svg>
+        </div>
+        <div class="nl">Config</div>
+      </div>
+      <div class="nb" onclick="changePage('mindcheck',this)">
+        <div class="ni">
+          <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 13C8 13 2.5 9.2 2.5 5.8a3.5 3.5 0 016.5-1.8 3.5 3.5 0 016.5 1.8C15.5 9.2 8 13 8 13z" fill="none" stroke="#3ecf7e" stroke-width="1.6"/><path d="M5.5 6.5l1.8 1.8L10 5.5" fill="none" stroke="#3ecf7e" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="nl">Mind</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ COMMAND ═══ -->
+  <div class="cmd">
+    <div class="ctb">
+      <div>
+        <div class="cttl" id="page-ttl">ONWARD</div>
+        <div class="cdt" id="page-sub">Friday, May 1 · HQ</div>
+      </div>
+      <div class="cbtn">+ New Goal</div>
+    </div>
+    <div class="cbody" id="cmd-body"></div>
+  </div>
+
+  <!-- ═══ WAYPOINT ═══ -->
+  <div class="wp" id="wp">
+    <div class="wpi">
+      <div class="wp-accent" id="wp-accent" style="background:#f0b429;"></div>
+      <div class="wp-hd" id="wp-hd">
+        <button class="wp-close" onclick="closeWP()">×</button>
+        <div class="wp-badge" id="wp-badge"><span id="wp-badge-dot" style="width:5px;height:5px;border-radius:50%;background:#f0b429;display:inline-block;margin-right:4px;"></span><span id="wp-badge-txt">Goal</span></div>
+        <div class="wp-ttl" id="wp-ttl">—</div>
+        <div class="wp-dsc" id="wp-dsc"></div>
+      </div>
+      <div class="wp-pg" id="wp-pg">
+        <div class="wp-pgr"><span>Progress</span><span id="wp-pct" style="font-size:12px;font-weight:700;">0%</span></div>
+        <div class="wp-pgtr"><div class="wp-pgf" id="wp-pgf"></div></div>
+      </div>
+      <div class="wp-bdy" id="wp-bdy"></div>
+      <div class="wp-ai" id="wp-ai">
+        <div class="wp-ai-h" id="wp-ai-h">
+          <div class="wp-ai-orb" id="wp-ai-orb">
+            <svg width="13" height="13" viewBox="0 0 13 13"><polygon points="6.5,1 8,5 12.5,5.2 9.2,8 10.3,12.5 6.5,9.8 2.7,12.5 3.8,8 0.5,5.2 5,5" fill="currentColor"/></svg>
+          </div>
+          <div class="wp-ai-txt">
+            <div class="wp-ai-lbl" id="wp-ai-lbl">AI Companion</div>
+            <div class="wp-ai-sub">Contextual reflection</div>
+          </div>
+          <div class="wp-ai-dot"></div>
+        </div>
+        <div class="wp-ai-b">
+          <div class="wp-ai-msg" id="wp-ai-msg"></div>
+          <div class="wp-ai-btns">
+            <div class="waib" id="waib1">✦ Check In</div>
+            <div class="waib" id="waib2">+ Suggest</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const CK = `<svg width="8" height="8" viewBox="0 0 8 8"><path d="M1 4l2 2 4-4" fill="none" stroke="#3ecf7e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const CKB = (c) => `<svg width="7" height="7" viewBox="0 0 7 7" style="transform:rotate(-45deg)"><path d="M1 3.5l1.8 1.8 3.5-3.5" fill="none" stroke="${c}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+const D = {
+  'focus-1':{ type:"Today's Focus", color:'#f0b429', title:'Complete Stellar revision', desc:'Your anchor task for today. Linked to the Stellar Revision goal.', ai:"This is your day's anchor. Even 30 focused minutes on the intro revision could unlock everything downstream — it's the only real blocker right now." },
+  'focus-2':{ type:"Today's Focus", color:'#53aaff', title:'Finish Alignerr test', desc:'Linked to Alignerr Launch. Time-sensitive — prioritize in your next session.', ai:"The test is your most time-sensitive item today. Front-load this in your next block — everything else can flex around it." },
+  'focus-3':{ type:"Today's Focus", color:'#3ecf7e', title:'Handshake onboarding', desc:'Linked to Portfolio Site. Low-effort, high-signal task. Good for late afternoon.', ai:"A great way to close the day. Completing the onboarding makes the portfolio goal feel real and gives you visible momentum." },
+  'goal-stellar':{ type:'Goal', color:'#f0b429', title:'Stellar Revision', desc:'Complete thesis revision and submit for faculty review by end of month.', progress:72,
+    tasks:[{done:true,t:'Literature review complete'},{done:true,t:'Methodology section drafted'},{done:false,t:'Revise intro with feedback'},{done:false,t:'Final proofread pass'}],
+    cps:[{done:true,t:'Draft v1 submitted'},{done:false,t:'Faculty review received'}],
+    ai:"72% in — two tasks left. The intro revision is your real unlock right now. Want me to suggest a specific angle to tackle it?" },
+  'goal-alignerr':{ type:'Goal', color:'#53aaff', title:'Alignerr Launch', desc:'Complete test submission and onboarding for the Alignerr platform.', progress:48,
+    tasks:[{done:true,t:'Register and complete profile'},{done:true,t:'Calibration test done'},{done:false,t:'Final test submission'},{done:false,t:'Review test results'}],
+    cps:[{done:false,t:'Test passed'},{done:false,t:'First project assigned'}],
+    ai:"Almost halfway. The final test submission today is the key milestone — finishing it before anything else is the move." },
+  'goal-portfolio':{ type:'Goal', color:'#3ecf7e', title:'Portfolio Site', desc:'Build and launch a personal portfolio to attract freelance opportunities.', progress:20,
+    tasks:[{done:true,t:'Choose stack and domain'},{done:false,t:'Design wireframes'},{done:false,t:'Build core pages'},{done:false,t:'Add case studies'}],
+    cps:[{done:false,t:'Site goes live'},{done:false,t:'First client inquiry'}],
+    ai:"Just getting started — the exciting part. What feeling do you want visitors to have when they land? That's where good portfolios begin." },
+  'stat-goals':{ type:'Overview', color:'#f0b429', title:'Active Goals', desc:'3 goals running in parallel. Stellar is strongest, Portfolio needs next-action focus.', ai:"All three goals are in motion. Stellar is your momentum leader — keep feeding it. Portfolio needs one concrete next step to stay alive." },
+  'stat-tasks':{ type:'Overview', color:'#53aaff', title:'Tasks This Week', desc:'7 of 12 tasks completed across all goals. 5 remain — all reachable today.', ai:"7 of 12 by Friday afternoon is solid. The remaining 5 are all completable today — a strong close to the week is within reach." },
+  'stat-cps':{ type:'Overview', color:'#3ecf7e', title:'Checkpoints Hit', desc:'2 milestones reached this month. Next: Faculty Review Received (Stellar).', ai:"Two checkpoints in one month is real progress. Faculty Review is next — that one comes right after the intro revision is done." },
+  'stat-overdue':{ type:'Attention', color:'#f77171', title:'Overdue Task', desc:'"Revise intro with feedback" — part of Stellar Revision. Needs attention today.', ai:"This is your most important unblocked task right now. Starting is the hardest part — want me to break it into three smaller steps?" },
+  'block-2pm':{ type:'Time Block', color:'#f0b429', title:'2PM — Stellar Review', desc:'Look over what I might have messed up in. High priority. Stellar Revision.', ai:"Reflection tasks are underrated. What specific aspect of the work are you most uncertain about? Starting there is more effective than reading it cover to cover." },
+  'block-4pm':{ type:'Time Block', color:'#53aaff', title:'4PM — Alignerr Test', desc:'Final test submission for Alignerr Launch. Block at least 60 minutes.', ai:"Give yourself a full hour — don't rush the submission. Quality matters here more than speed. Clear your environment before starting." },
+  'block-6pm':{ type:'Time Block', color:'#3ecf7e', title:'6PM — Handshake', desc:'Handshake onboarding walkthrough. Medium priority. Portfolio Site.', ai:"Good timing — late afternoon energy works well for onboarding walks. No pressure, just familiarize. The real work comes after." }
+};
+
+let cur = null;
+
+function sel(id) {
+  if(cur===id){ closeWP(); return; }
+  if(cur){ const o=document.getElementById('el-'+cur); if(o) o.classList.remove('sel'); }
+  cur=id;
+  const el=document.getElementById('el-'+id);
+  if(el) el.classList.add('sel');
+  renderWP(D[id]);
+  document.getElementById('wp').classList.add('open');
+}
+
+function closeWP() {
+  if(cur){ const el=document.getElementById('el-'+cur); if(el) el.classList.remove('sel'); }
+  cur=null;
+  document.getElementById('wp').classList.remove('open');
+}
+
+function renderWP(d) {
+  const c=d.color;
+  // accent bar
+  document.getElementById('wp-accent').style.background=c;
+  // badge
+  document.getElementById('wp-badge-dot').style.background=c;
+  document.getElementById('wp-badge-txt').textContent=d.type;
+  document.getElementById('wp-badge-txt').style.color=c;
+  // title + desc
+  document.getElementById('wp-ttl').textContent=d.title;
+  document.getElementById('wp-ttl').style.color=c;
+  document.getElementById('wp-dsc').textContent=d.desc;
+  // progress
+  const pg=document.getElementById('wp-pg');
+  if(d.progress!==undefined){
+    pg.style.display='block';
+    document.getElementById('wp-pct').textContent=d.progress+'%';
+    document.getElementById('wp-pct').style.color=c;
+    document.getElementById('wp-pgf').style.width=d.progress+'%';
+    document.getElementById('wp-pgf').style.background=c;
+  } else { pg.style.display='none'; }
+  // body
+  let h='';
+  if(d.tasks){
+    h+=`<div class="wsh"><svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" rx="1.5" fill="none" stroke="#56687f" stroke-width="1.2"/><path d="M3 5l1.5 1.5 3-3" fill="none" stroke="#56687f" stroke-width="1.2" stroke-linecap="round"/></svg>Subtasks</div>`;
+    d.tasks.forEach(t=>{ h+=`<div class="wti"><div class="wck ${t.done?'done':''}">${t.done?CK:''}</div><div class="wtx ${t.done?'dn':''}">${t.t}</div></div>`; });
+  }
+  if(d.cps){
+    h+=`<div class="wsh" style="margin-top:10px;"><svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" rx="1.5" fill="none" stroke="#53aaff" stroke-width="1.2" transform="rotate(45 5 5)"/></svg><span style="color:#53aaff;">Checkpoints</span></div>`;
+    d.cps.forEach(cp=>{ h+=`<div class="wti"><div class="wdm ${cp.done?'done':''}">${cp.done?CKB('#53aaff'):''}</div><div class="wtx">${cp.t}</div></div>`; });
+  }
+  document.getElementById('wp-bdy').innerHTML=h||'<div style="font-size:10px;color:#56687f;padding-top:4px;">Click subtasks to mark progress.</div>';
+  // AI card accent
+  const aiC = c==='#f77171'?'#f77171': c==='#3ecf7e'?'#3ecf7e': c==='#f0b429'?'#f0b429':'#53aaff';
+  document.getElementById('wp-ai').style.borderColor=aiC+'28';
+  document.getElementById('wp-ai-h').style.background=aiC+'06';
+  document.getElementById('wp-ai-orb').style.borderColor=aiC+'50';
+  document.getElementById('wp-ai-orb').style.background=aiC+'12';
+  document.getElementById('wp-ai-orb').style.color=aiC;
+  document.getElementById('wp-ai-lbl').style.color=aiC;
+  document.getElementById('wp-ai-msg').textContent='"'+d.ai+'"';
+  const b1=document.getElementById('waib1');
+  b1.style.color=aiC; b1.style.borderColor=aiC+'40'; b1.style.background=aiC+'10';
+  const b2=document.getElementById('waib2');
+  b2.style.color='#9b79e8'; b2.style.borderColor='#9b79e840'; b2.style.background='#9b79e810';
+}
+
+const PAGES = {
+  hq:{ ttl:'ONWARD', sub:'Friday, May 1 · HQ',
+    html:`<div class="sg">
+      <div class="sc" id="el-stat-goals" onclick="sel('stat-goals')">
+        <div class="sc-ir"><div class="sc-ico" style="background:#f0b42918;border:1px solid #f0b42935;"><svg width="12" height="12" viewBox="0 0 12 12"><polygon points="6,1 7.4,4.5 11.5,4.7 8.5,7.6 9.5,11.5 6,9.3 2.5,11.5 3.5,7.6 0.5,4.7 4.6,4.5" fill="#f0b429"/></svg></div><div class="sc-lbl">Active Goals</div></div>
+        <div class="sc-val">3</div><div class="sc-sub">2 on track · 1 needs attention</div>
+      </div>
+      <div class="sc" id="el-stat-tasks" onclick="sel('stat-tasks')">
+        <div class="sc-ir"><div class="sc-ico" style="background:#53aaff18;border:1px solid #53aaff35;"><svg width="12" height="12" viewBox="0 0 12 12"><rect x="1.5" y="6" width="2.5" height="4.5" rx="0.8" fill="#53aaff"/><rect x="4.75" y="3.5" width="2.5" height="7" rx="0.8" fill="#53aaff80"/><rect x="8" y="1.5" width="2.5" height="9" rx="0.8" fill="#53aaff50"/></svg></div><div class="sc-lbl">Tasks Done</div></div>
+        <div class="sc-val" style="color:#53aaff;">7</div><div class="sc-sub">of 12 total this week</div>
+      </div>
+      <div class="sc" id="el-stat-cps" onclick="sel('stat-cps')">
+        <div class="sc-ir"><div class="sc-ico" style="background:#3ecf7e18;border:1px solid #3ecf7e35;"><svg width="12" height="12" viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8" rx="1.5" fill="none" stroke="#3ecf7e" stroke-width="1.3" transform="rotate(45 6 6)"/><path d="M3.5 6l1.8 1.8 3.3-3.3" fill="none" stroke="#3ecf7e" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="sc-lbl">Checkpoints</div></div>
+        <div class="sc-val" style="color:#3ecf7e;">2</div><div class="sc-sub">reached this month</div>
+      </div>
+      <div class="sc" id="el-stat-overdue" onclick="sel('stat-overdue')">
+        <div class="sc-ir"><div class="sc-ico" style="background:#f7717118;border:1px solid #f7717135;"><svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.8" fill="none" stroke="#f77171" stroke-width="1.3"/><path d="M6 3.5v3" stroke="#f77171" stroke-width="1.5" stroke-linecap="round"/><circle cx="6" cy="8.5" r=".7" fill="#f77171"/></svg></div><div class="sc-lbl">Overdue</div></div>
+        <div class="sc-val" style="color:#f77171;">1</div><div class="sc-sub">Revise intro section</div>
+      </div>
+    </div>
+    <div style="flex:1;overflow:hidden;">
+      <div class="blkh">Today's Focus Blocks</div>
+      <div class="tb"><div class="tbt">2PM</div><div class="tbc" id="el-block-2pm" onclick="sel('block-2pm')" style="background:#f0b42910;border-left-color:#f0b429;"><div class="tbn">Look over what I might have messed up in</div><div class="tbg" style="color:#f0b42980;">Stellar Revision</div></div></div>
+      <div class="tb"><div class="tbt">4PM</div><div class="tbc" id="el-block-4pm" onclick="sel('block-4pm')" style="background:#53aaff0a;border-left-color:#53aaff;"><div class="tbn">Finish Alignerr test submission</div><div class="tbg" style="color:#53aaff80;">Alignerr Launch</div></div></div>
+      <div class="tb"><div class="tbt">6PM</div><div class="tbc" id="el-block-6pm" onclick="sel('block-6pm')" style="background:#3ecf7e0a;border-left-color:#3ecf7e;"><div class="tbn">Handshake onboarding walkthrough</div><div class="tbg" style="color:#3ecf7e80;">Portfolio Site</div></div></div>
+    </div>`
+  },
+  tracking:{ ttl:'TRACKING', sub:'Friday, May 1 · Progress',
+    html:`<div class="ph"><div class="ph-ico" style="background:#53aaff18;border:1px solid #53aaff35;"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M3 19L7 10l5 5 5.5-9" fill="none" stroke="#53aaff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="3" cy="19" r="2" fill="#53aaff60"/><circle cx="18.5" cy="6" r="2.2" fill="#53aaff"/></svg></div><div class="ph-ttl" style="color:#53aaff;">TRACKING</div><div class="ph-sub">Progress analytics and goal charts — coming in the next build.</div></div>`
+  },
+  settings:{ ttl:'SETTINGS', sub:'Friday, May 1 · Configuration',
+    html:`<div class="ph"><div class="ph-ico" style="background:#9b79e818;border:1px solid #9b79e835;"><svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="#9b79e8" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="#9b79e8"/><path d="M12 4v1.5M12 18.5V20M4 12h1.5M18.5 12H20" stroke="#9b79e8" stroke-width="1.8" stroke-linecap="round"/></svg></div><div class="ph-ttl" style="color:#9b79e8;">SETTINGS</div><div class="ph-sub">API key, theme, and preferences — coming soon.</div></div>`
+  },
+  mindcheck:{ ttl:'MIND CHECK', sub:'Friday, May 1 · Reflection',
+    html:`<div class="ph"><div class="ph-ico" style="background:#3ecf7e18;border:1px solid #3ecf7e35;"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M12 20C12 20 3 14.5 3 8.5a5 5 0 019-3A5 5 0 0121 8.5c0 6-9 11.5-9 11.5z" fill="none" stroke="#3ecf7e" stroke-width="2"/><path d="M8.5 9.5l2.5 2.5 4.5-4.5" fill="none" stroke="#3ecf7e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="ph-ttl" style="color:#3ecf7e;">MIND CHECK</div><div class="ph-sub">AI-guided daily reflection and wellbeing check-in — coming soon.</div></div>`
+  }
+};
+
+function changePage(page, btn) {
+  closeWP();
+  document.querySelectorAll('.nb').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  const p=PAGES[page];
+  document.getElementById('page-ttl').textContent=p.ttl;
+  document.getElementById('page-sub').textContent=p.sub;
+  document.getElementById('cmd-body').innerHTML=p.html;
+}
+
+// Init
+document.getElementById('cmd-body').innerHTML=PAGES.hq.html;
+</script>

@@ -1,6 +1,6 @@
 # Meridian — Navigate Your Growth
 
-**Meridian** is a visual, AI-powered goal navigation desktop app. It's built around a simple idea: **structured flexibility** — providing architecture for long-term growth while letting curiosity lead. No rigid time-blocking, no toxic productivity pressure. Just a thoughtful companion for your goals.
+**Meridian** is a visual, AI-powered goal navigation desktop app. It's built around a simple idea: Providing structure for long-term growth by breaking goals down.
 
 > ⚠️ **Work in Progress** — This is an active personal project. The codebase is functional but still evolving. Contributions and feedback are welcome as it matures.
 

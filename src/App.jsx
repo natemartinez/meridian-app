@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import meridianLogo from './assets/meridian_logo.png';
 
 import { T, NODE_PALETTE } from './utils/theme.js';
 import { askAI } from './utils/api.js';
@@ -1719,7 +1720,7 @@ import { drawOnwardPage, drawMapPage, drawPathsPage, drawSkillsPage, drawConstel
             <div className="sig">
               {/* Logo block */}
               <div className="sig-logo">
-                <div className="sig-brand">MERIDIAN</div>
+                <img src={meridianLogo} alt="MERIDIAN" style={{ width:130, display:'block' }} />
                 <div className="sig-subt">Navigate Your Growth</div>
                 {(() => {
                   const streak = calcStreak();

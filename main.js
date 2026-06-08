@@ -17,6 +17,7 @@ function createWindow() {
     minHeight: 600,
     title: 'Meridian',
     backgroundColor: '#07090f',
+    icon: path.join(__dirname, 'src/assets/meridian_icon.png'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

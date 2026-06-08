@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { T } from '../utils/theme.js';
+import meridianLogo from '../assets/meridian_logo.png';
 
 export default function ApiKeyScreen({ onSave }) {
   const [val, setVal]       = useState('');
@@ -18,7 +19,7 @@ export default function ApiKeyScreen({ onSave }) {
   return (
     <div style={{ position:'fixed', inset:0, background:T.bg, display:'flex', alignItems:'center', justifyContent:'center' }}>
       <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:16, padding:'40px 48px', width:440, boxShadow:'0 8px 40px #00000080' }}>
-        <div style={{ fontFamily:'Syne,sans-serif', fontSize:22, fontWeight:700, color:T.text, marginBottom:8 }}>Meridian</div>
+        <img src={meridianLogo} alt="Meridian" style={{ width:180, display:'block', marginBottom:12 }} />
         <div style={{ color:T.muted, fontSize:13, marginBottom:28, lineHeight:1.5 }}>
           Enter your OpenRouter API key to enable AI features.<br/>
           Get a free key at <strong>openrouter.ai</strong> — stored encrypted on this device.

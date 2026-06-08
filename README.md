@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="src/assets/meridian_full_logo.png" alt="Meridian" width="600" />
+</p>
+
 # Meridian — Navigate Your Growth
 
 **Meridian** is a visual, AI-powered goal navigation desktop app. It's built around a simple idea: Providing structure for long-term growth by breaking goals down.
@@ -67,7 +71,7 @@ npm run build
 
 1. Launch the app — you'll be prompted for an API key
 2. Get a free API key from [OpenRouter](https://openrouter.ai/)
-3. Paste it into the Settings screen
+3. Paste it into the 'Config' screen
 4. Start creating goals and exploring
 
 ---

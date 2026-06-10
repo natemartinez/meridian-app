@@ -41,7 +41,7 @@
 
 ## Prerequisites
 
-- **Node.js** >= 18
+- **Node.js** >= 22
 - **npm** (comes with Node.js)
 - An **OpenRouter API key** (free tier available) for AI features
 
@@ -95,7 +95,6 @@ meridian-app/
 │   ├── utils/           # Utility modules (API, canvas, helpers, retry logic)
 │   ├── constants/       # Constants (colors, skills definitions)
 │   └── db/              # Database schema
-└── docs/                # Documentation and implementation plans
 ```
 
 ---

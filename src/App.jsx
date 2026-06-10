@@ -46,8 +46,8 @@ import { drawOnwardPage, drawMapPage, drawPathsPage, drawSkillsPage, drawConstel
       const [confirmDelete, setConfirmDelete] = useState(null);
       // Compass/page state
       const [activePage, setActivePage]           = useState('constellation');
-      const [onwardItems, setOnwardItems]         = useState(() => { try { const s = localStorage.getItem('meridian_onward_v2'); return s ? JSON.parse(s) : []; } catch { return []; } });
-      const [freeformTasks, setFreeformTasks]     = useState(() => { try { const s = localStorage.getItem('meridian_freeform_tasks'); return s ? JSON.parse(s) : []; } catch { return []; } });
+      const [onwardItems, setOnwardItems]         = useState(() => { try { const s = localStorage.getItem('meridian_onward_v2'); return s ? JSON.parse(s) : []; } catch { /* empty — invalid JSON */ return []; } });
+      const [freeformTasks, setFreeformTasks]     = useState(() => { try { const s = localStorage.getItem('meridian_freeform_tasks'); return s ? JSON.parse(s) : []; } catch { /* empty — invalid JSON */ return []; } });
       const [skills, setSkills]                   = useState([]);
       const [onwardForm, setOnwardForm]           = useState({ title:'', hour:480, priority:'low', goalId:null });
       // Drag and drop state for subtasks/checkpoints to time blocks
@@ -673,7 +673,7 @@ import { drawOnwardPage, drawMapPage, drawPathsPage, drawSkillsPage, drawConstel
             linkedTaskId: item.id,
             running: false,
           }));
-        } catch {}
+        } catch { /* empty — localStorage parse failure is non-critical */ }
         setPomodoroPreselect({ goalId: item.goalId ?? null, taskId: item.id });
         // Also set focusMode for immersive FocusScreen
         setFocusMode({ active: true, taskTitle: item.title, taskId: item.id, goalId: item.goalId ?? null });
@@ -903,7 +903,7 @@ import { drawOnwardPage, drawMapPage, drawPathsPage, drawSkillsPage, drawConstel
           const areas = JSON.parse(raw.replace(/```json|```/g, '').trim());
           if (Array.isArray(areas) && areas.length >= 3)
             setFocus([String(areas[0]), String(areas[1]), String(areas[2])]);
-        } catch {}
+        } catch { /* empty — AI response parse failure is non-critical */ }
         setPlanningDay(false);
       };
 
@@ -2517,6 +2517,7 @@ import { drawOnwardPage, drawMapPage, drawPathsPage, drawSkillsPage, drawConstel
           )}
 
           {/* ── Legacy SMART Modal (kept for reference, hidden) ── */}
+          {/* eslint-disable-next-line no-constant-binary-expression */}
           {false && modal && (
             <div className="overlay" onClick={(e) => { if (e.target.className === "overlay") setModal(false); }}>
               <div className="modal">

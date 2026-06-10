@@ -8,7 +8,7 @@ function loadPomodoroState() {
   try {
     const raw = localStorage.getItem(POMODORO_KEY);
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch { /* empty */ }
   return null;
 }
 

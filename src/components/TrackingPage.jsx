@@ -43,7 +43,7 @@ export default function TrackingPage({
   // Poll Pomodoro state from localStorage for the Working Hours card
   useEffect(() => {
     const id = setInterval(() => {
-      try { setPomodoroData(JSON.parse(localStorage.getItem('meridian_pomodoro') || 'null')); } catch {}
+      try { setPomodoroData(JSON.parse(localStorage.getItem('meridian_pomodoro') || 'null')); } catch { /* empty */ }
     }, 5000);
     return () => clearInterval(id);
   }, []);

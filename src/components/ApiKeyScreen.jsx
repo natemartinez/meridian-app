@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { T } from '../utils/theme.js';
-import meridianLogo from '../assets/meridian_logo.png';
+import meridianLogo from '../assets/meridian_full_logo.png';
 
 export default function ApiKeyScreen({ onSave }) {
   const [val, setVal]       = useState('');

@@ -35,7 +35,7 @@
     "concurrently": "^9.2.1",
     "electron": "^41.2.1",
     "vite": "^8.0.9",
-    "vitest": "^4.1.8"
+    "vitest": "^3.2.6"
   },
   "dependencies": {
     "@tiptap/pm": "^3.22.5",

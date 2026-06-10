@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import meridianLogo from './assets/meridian_logo.png';
+import meridianLogo from './assets/meridian_full_logo.png';
 
 import { T, NODE_PALETTE } from './utils/theme.js';
 import { askAI } from './utils/api.js';

@@ -5,7 +5,7 @@
   "description": "Visual goal navigation powered by AI",
   "main": "main.js",
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "keywords": [
     "productivity",
@@ -35,7 +35,7 @@
     "concurrently": "^9.2.1",
     "electron": "^41.2.1",
     "vite": "^8.0.9",
-    "vitest": "^3.2.6"
+    "vitest": "^4.1.8"
   },
   "dependencies": {
     "@tiptap/pm": "^3.22.5",

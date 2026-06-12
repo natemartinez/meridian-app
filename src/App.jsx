@@ -21,12 +21,23 @@ import PathsView from './components/views/PathsView.jsx';
 import WorkLogsView from './components/views/WorkLogsView.jsx';
 import GoalModal from './components/panels/GoalModal.jsx';
 import FocusScreen from './components/views/FocusScreen.jsx';
+import BottomNav from './components/BottomNav.jsx';
+import DeadlineNotifier from './components/DeadlineNotifier.jsx';
+import OnwardTaskPopover from './components/OnwardTaskPopover.jsx';
+import GoalDetailPanel from './components/panels/GoalDetailPanel.jsx';
+import CanvasPanelWrapper from './components/panels/CanvasPanelWrapper.jsx';
+import NovaSidebarBlock from './components/nova/NovaSidebarBlock.jsx';
+import ProgramsList from './components/nova/ProgramsList.jsx';
+import NovaInsightsPanel from './components/nova/NovaInsightsPanel.jsx';
 import { INITIAL_SKILLS, addSkillEvidence, updateSkillMeta } from './constants/skills.js';
 import { buildLightKnowledgeContext } from './utils/knowledge.js';
 import { computePlanningConfidence } from './utils/nova.js';
 import NOVAProgramPanel from './components/nova/NOVAProgramPanel.jsx';
 import { useNOVA } from './hooks/useNOVA.js';
 import { drawOnwardPage, drawMapPage, drawPathsPage, drawSkillsPage, drawConstellationPage } from './utils/drawPages.js';
+import useTracking from './hooks/useTracking.js';
+import useLocalStorageSync from './hooks/useLocalStorageSync.js';
+import { useOnwardScroll } from './hooks/useOnwardScroll.js';
 
     function Meridian() {
       const [projects, setProjects]     = useState(() => { try { const s = localStorage.getItem('meridian_projects_v2'); return s ? JSON.parse(s) : []; } catch { return []; } });
@@ -265,6 +276,18 @@ import { drawOnwardPage, drawMapPage, drawPathsPage, drawSkillsPage, drawConstel
       // Onward card drag state (free-form vertical reorder)
       const onwardDragRef    = useRef(null);
 
+      // ── Tracking hook ──
+      const {
+        todayStr, sessionDurationMin,
+        getSessionsForDay, getSessionsForWeek, getSessionsForMonth,
+        getTodayStats, startSession, stopSession,
+        calcStreak, getWeeklyData, getMonthlyData, planDay,
+      } = useTracking({
+        projects, sessions, activeSession,
+        setSessions, setActiveSession, apiKey,
+        setFocus, setPlanningDay,
+      });
+
       // Load persisted state + API key + settings on mount
       useEffect(() => {
         Promise.all([
@@ -307,20 +330,21 @@ import { drawOnwardPage, drawMapPage, drawPathsPage, drawSkillsPage, drawConstel
         window.electronAPI?.saveState({ projects, focus, onwardItems, skills, intensity, routines, sessions });
       }, [projects, focus, onwardItems, skills, intensity, routines, sessions, loaded]);
 
-      // Persist all critical state to localStorage (safety net alongside Electron IPC)
-      useEffect(() => { localStorage.setItem('meridian_projects_v2',  JSON.stringify(projects));    }, [projects]);
-      useEffect(() => { localStorage.setItem('meridian_onward_v2',    JSON.stringify(onwardItems)); }, [onwardItems]);
-      useEffect(() => { localStorage.setItem('meridian_freeform_tasks', JSON.stringify(freeformTasks)); }, [freeformTasks]);
-      useEffect(() => { localStorage.setItem('meridian_skills',       JSON.stringify(xpSkills)); }, [xpSkills]);
-      useEffect(() => { localStorage.setItem('meridian_companion_name', companionName); }, [companionName]);
-      useEffect(() => { localStorage.setItem('meridian_streak_days', String(streakDays));       }, [streakDays]);
-      useEffect(() => { if (lastActiveDate) localStorage.setItem('meridian_last_active', lastActiveDate); }, [lastActiveDate]);
-      // Persist new Ingestion & Smart Sorting state
-      useEffect(() => { localStorage.setItem('meridian_selected_today', JSON.stringify(selectedForToday)); }, [selectedForToday]);
-      useEffect(() => { localStorage.setItem('meridian_deferred', JSON.stringify(deferredItems)); }, [deferredItems]);
-      useEffect(() => { localStorage.setItem('meridian_backlog', JSON.stringify(backlogItems)); }, [backlogItems]);
-      useEffect(() => { localStorage.setItem('meridian_brain_dump', JSON.stringify(brainDumpEntries)); }, [brainDumpEntries]);
-      useEffect(() => { localStorage.setItem('meridian_journal', JSON.stringify(journalEntries)); }, [journalEntries]);
+      // ── localStorage persistence ──
+      useLocalStorageSync([
+        [projects, 'meridian_projects_v2'],
+        [onwardItems, 'meridian_onward_v2'],
+        [freeformTasks, 'meridian_freeform_tasks'],
+        [xpSkills, 'meridian_skills'],
+        [companionName, 'meridian_companion_name'],
+        [streakDays, 'meridian_streak_days'],
+        [lastActiveDate, 'meridian_last_active'],
+        [selectedForToday, 'meridian_selected_today'],
+        [deferredItems, 'meridian_deferred'],
+        [backlogItems, 'meridian_backlog'],
+        [brainDumpEntries, 'meridian_brain_dump'],
+        [journalEntries, 'meridian_journal'],
+      ], loaded);
 
       // Escape key exits focus mode
       useEffect(() => {
@@ -377,31 +401,6 @@ import { drawOnwardPage, drawMapPage, drawPathsPage, drawSkillsPage, drawConstel
       useEffect(() => { draggingRef.current   = dragging;      }, [dragging]);
       useEffect(() => { activePageRef.current = activePage;    }, [activePage]);
       
-      // Scroll to current time when Onward page opens (center in 5:45 window)
-      useEffect(() => {
-        if (activePage !== 'onward') return;
-        const timer = setTimeout(() => {
-          const canvas = canvasRef.current;
-          const parent = canvas?.parentElement;
-          if (!parent) return;
-          
-          const now = new Date();
-          const curH = now.getHours() + now.getMinutes() / 60;
-          const ROW_START = 6;
-          const TOTAL_ROWS = 19;
-          const VISIBLE_HOURS = 5.75;
-          const PAD = 24;
-          // Calculate row height to fill viewport (matches drawOnwardPage)
-          const rowHeightPx = parent.clientHeight / VISIBLE_HOURS;
-          // Center current time in the visible window
-          const targetY = PAD + (curH - ROW_START) * rowHeightPx - (parent.clientHeight / 2) + (VISIBLE_HOURS * rowHeightPx / 2);
-          // Max scroll = content height - viewport = (TOTAL_ROWS + VISIBLE_HOURS) * rowHeight + PAD - viewport
-          const maxScroll = (TOTAL_ROWS + VISIBLE_HOURS) * rowHeightPx + PAD * 2 - parent.clientHeight;
-          
-          parent.scrollTo({ top: Math.max(0, Math.min(targetY, maxScroll)), behavior: 'smooth' });
-        }, 100);
-        return () => clearTimeout(timer);
-      }, [activePage]);
       useEffect(() => { onwardItemsRef.current = onwardItems;  }, [onwardItems]);
       useEffect(() => { draggedTaskRef.current = draggedTask;  }, [draggedTask]);
       useEffect(() => { pendingDropRef.current = pendingDrop;  }, [pendingDrop]);
@@ -412,14 +411,8 @@ import { drawOnwardPage, drawMapPage, drawPathsPage, drawSkillsPage, drawConstel
       useEffect(() => { selectedSkillRef.current = selectedSkillId; }, [selectedSkillId]);
       useEffect(() => { sunIdRef.current = sunId; if (sunId) localStorage.setItem('meridian_sun_id', sunId); }, [sunId]);
       
-      // Resize canvas when waypoint sidebar opens/closes (after CSS transition)
-      useEffect(() => {
-        if (activePage !== 'onward') return;
-        const timer = setTimeout(() => {
-          resizeRef.current?.();
-        }, 450); // Wait for CSS transition (0.4s) + small buffer
-        return () => clearTimeout(timer);
-      }, [waypointOpen, activePage]);
+      // Scroll to current time + resize canvas when waypoint opens (extracted hook)
+      useOnwardScroll(activePage, canvasRef, resizeRef);
 
 
       // ── Canvas draw loop ──────────────────────────────────────
@@ -880,119 +873,6 @@ import { drawOnwardPage, drawMapPage, drawPathsPage, drawSkillsPage, drawConstel
             ? { ...p, checkpoints: p.checkpoints.map(c => c.id === itemId ? { ...c, notes } : c) }
             : { ...p, subtasks:    p.subtasks.map(s    => s.id === itemId ? { ...s, notes } : s) };
         }));
-
-      const startSession = (label = '', goalId = null) => {
-        const s = { id: uid(), startTime: new Date().toISOString(), endTime: null, label, goalId };
-        setActiveSession(s);
-        setSessions(prev => [...prev, s]);
-      };
-      const stopSession = () => {
-        if (!activeSession) return;
-        const endTime = new Date().toISOString();
-        setSessions(prev => prev.map(s => s.id === activeSession.id ? { ...s, endTime } : s));
-        setActiveSession(null);
-      };
-
-      const planDay = async () => {
-        if (!projects.length) return;
-        setPlanningDay(true);
-        const summary = projects.map(p => `"${p.title}" (${progress(p)}% done)`).join(', ');
-        const system  = 'Return ONLY a JSON array of exactly 3 short strings (max 28 chars each) as focus areas for today. No explanation, no markdown.';
-        const raw     = await askAI(system, `Goals: ${summary}. Suggest 3 focus areas for today.`, apiKey);
-        try {
-          const areas = JSON.parse(raw.replace(/```json|```/g, '').trim());
-          if (Array.isArray(areas) && areas.length >= 3)
-            setFocus([String(areas[0]), String(areas[1]), String(areas[2])]);
-        } catch { /* empty — AI response parse failure is non-critical */ }
-        setPlanningDay(false);
-      };
-
-      // ── Performance calculations ──────────────────────────────
-      const allCompletionDates = () => {
-        const dates = [];
-        projects.forEach(p => {
-          p.subtasks.forEach(s    => { if (s.completedAt) dates.push(new Date(s.completedAt)); });
-          p.checkpoints.forEach(c => { if (c.completedAt) dates.push(new Date(c.completedAt)); });
-        });
-        return dates;
-      };
-
-      const calcStreak = () => {
-        const dateStrings = [...new Set(allCompletionDates().map(d => {
-          const x = new Date(d); x.setHours(0,0,0,0); return x.getTime();
-        }))].sort((a,b) => b-a);
-        if (!dateStrings.length) return 0;
-        const today = new Date(); today.setHours(0,0,0,0);
-        const yesterday = new Date(today); yesterday.setDate(yesterday.getDate()-1);
-        const mostRecent = new Date(dateStrings[0]);
-        if (mostRecent < yesterday) return 0;
-        let streak = 1;
-        for (let i = 1; i < dateStrings.length; i++) {
-          if ((dateStrings[i-1] - dateStrings[i]) === 86400000) streak++;
-          else break;
-        }
-        return streak;
-      };
-
-      const getWeeklyData = () => {
-        const completions = allCompletionDates();
-        return Array.from({ length: 7 }, (_, i) => {
-          const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - (6-i));
-          const end = new Date(d); end.setHours(23,59,59,999);
-          return {
-            day:     ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()],
-            count:   completions.filter(c => c >= d && c <= end).length,
-            isToday: i === 6,
-          };
-        });
-      };
-
-      const getMonthlyData = () => {
-        const completions = allCompletionDates();
-        const now = new Date();
-        const year = now.getFullYear(), month = now.getMonth();
-        const daysInMonth = new Date(year, month+1, 0).getDate();
-        const firstDow    = new Date(year, month, 1).getDay();
-        return {
-          firstDow,
-          days: Array.from({ length: daysInMonth }, (_, i) => {
-            const d   = new Date(year, month, i+1);
-            const end = new Date(year, month, i+1, 23, 59, 59, 999);
-            return {
-              day:     i+1,
-              count:   completions.filter(c => c >= d && c <= end).length,
-              isToday: i+1 === now.getDate(),
-            };
-          }),
-        };
-      };
-
-
-      // ── Tracking helpers ─────────────────────────────────────────
-      const todayStr = () => new Date().toISOString().slice(0, 10);
-      const sessionDurationMin = (s) => {
-        const end = s.endTime ? new Date(s.endTime) : new Date();
-        return Math.max(0, Math.round((end - new Date(s.startTime)) / 60000));
-      };
-      const getSessionsForDay = (dateStr) => sessions.filter(s => s.startTime.startsWith(dateStr));
-      const getSessionsForWeek = () => {
-        const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 6); cutoff.setHours(0,0,0,0);
-        return sessions.filter(s => new Date(s.startTime) >= cutoff);
-      };
-      const getSessionsForMonth = () => {
-        const now = new Date();
-        const start = new Date(now.getFullYear(), now.getMonth(), 1);
-        return sessions.filter(s => new Date(s.startTime) >= start);
-      };
-      const getTodayStats = () => {
-        const todaySessions = getSessionsForDay(todayStr()).filter(s => s.endTime);
-        const totalMin = todaySessions.reduce((a, s) => a + sessionDurationMin(s), 0);
-        const focusedMin = todaySessions.filter(s => sessionDurationMin(s) >= 25).reduce((a, s) => a + sessionDurationMin(s), 0);
-        const productiveMin = todaySessions.filter(s => s.goalId).reduce((a, s) => a + sessionDurationMin(s), 0);
-        const lastEnded = todaySessions.slice().sort((a,b) => new Date(b.endTime)-new Date(a.endTime))[0];
-        const minSinceBreak = lastEnded ? Math.round((Date.now() - new Date(lastEnded.endTime)) / 60000) : 0;
-        return { totalMin, focusedMin, productiveMin, minSinceBreak };
-      };
 
       const checkIn = async () => {
         if (!selected) { setAiMsg('Open a goal first to use Check In.'); return; }
@@ -1737,233 +1617,25 @@ import { drawOnwardPage, drawMapPage, drawPathsPage, drawSkillsPage, drawConstel
                 })()}
               </div>
 
-              {/* Nova Confidence + Today's Plan */}
-              <div className="sec nova-block">
-                {(() => {
-                  const confidence = computePlanningConfidence(novaState.syncEvents);
-                  const confidenceColor = confidence >= 70 ? T.green : confidence >= 40 ? T.accent : T.muted;
-                  const confidenceLabel = confidence >= 70 ? 'Knows you well' : confidence >= 40 ? 'Learning fast' : 'Getting started';
-                  const plan = novaState.dailyPlan;
-                  const today = new Date().toISOString().slice(0, 10);
-                  const planItems = (plan?.date === today && plan?.items) ? plan.items : [];
-                  const insightsOpen = waypointOpen && waypointContext?.type === 'nova-insights';
-                  const planError = novaState.planError;
-                  const fmtTime = (mins) => {
-                    const h = Math.floor(mins / 60);
-                    const m = mins % 60;
-                    const ap = h >= 12 ? 'PM' : 'AM';
-                    return `${h % 12 || 12}:${m.toString().padStart(2, '0')}${ap}`;
-                  };
-                  return (
-                    <div
-                      style={{ borderRadius:7, border:`1px solid ${insightsOpen ? T.accent : T.border}`, background:T.card, overflow:'hidden', cursor:'pointer', transition:'border-color .2s' }}
-                      onClick={() => insightsOpen ? closeWaypoint() : openWaypoint({ type:'nova-insights' })}
-                    >
-                      {/* Confidence header */}
-                      <div style={{ padding:'8px 10px 6px' }}>
-                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:5 }}>
-                          <div className="nova-lbl" style={{ fontFamily:"'IBM Plex Mono',monospace", color:T.muted, letterSpacing:'.08em' }}>NOVA CONFIDENCE</div>
-                          <div className="nova-pct" style={{ fontFamily:"'Syne',sans-serif", fontWeight:700, color:confidenceColor }}>{confidence}%</div>
-                        </div>
-                        <div style={{ height:3, borderRadius:2, background:T.border, overflow:'hidden', marginBottom:4 }}>
-                          <div style={{ height:'100%', width:`${confidence}%`, background:confidenceColor, borderRadius:2, transition:'width .5s ease' }} />
-                        </div>
-                        <div className="nova-status" style={{ fontFamily:"'IBM Plex Mono',monospace", color:confidenceColor, opacity:.8 }}>{confidenceLabel}</div>
-                      </div>
-                      {/* Divider */}
-                      <div style={{ height:1, background:T.border }} />
-                      {/* Daily plan header */}
-                      <div style={{ padding:'6px 10px 4px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                        <div className="plan-lbl" style={{ fontFamily:"'IBM Plex Mono',monospace", color:T.muted, letterSpacing:'.08em' }}>TODAY'S PLAN</div>
-                        <button
-                          onClick={e => { e.stopPropagation(); generateNovaPlan(prioritizeInput); }}
-                          disabled={novaState.planGenLoading || !apiKey}
-                          className="plan-refresh-btn"
-                          style={{ background:'none', border:`1px solid ${T.border}`, borderRadius:4, color: novaState.planGenLoading ? T.muted : T.accent, cursor: novaState.planGenLoading || !apiKey ? 'default' : 'pointer', padding:'2px 5px', fontFamily:"'IBM Plex Mono',monospace", letterSpacing:'.05em', opacity: novaState.planGenLoading ? .5 : 1 }}
-                        >{novaState.planGenLoading ? '···' : 'REFRESH'}</button>
-                      </div>
-                      {/* Prioritization input */}
-                      <div style={{ padding:'0 10px 6px' }} onClick={e => e.stopPropagation()}>
-                        <input
-                          value={prioritizeInput}
-                          onChange={e => setPrioritizeInput(e.target.value)}
-                          placeholder="What should I prioritize today?"
-                          style={{ width:'100%', boxSizing:'border-box', background:T.bg, border:`1px solid ${T.border}`, borderRadius:4, padding:'5px 7px', color:T.text, fontFamily:"'IBM Plex Mono',monospace", fontSize:9, outline:'none' }}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter' && prioritizeInput.trim()) {
-                              e.stopPropagation();
-                              generateNovaPlan(prioritizeInput);
-                            }
-                          }}
-                        />
-                      </div>
-                      {/* Plan error message */}
-                      {planError && (
-                        <div style={{ padding:'6px 10px', fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:T.rose, lineHeight:1.6, borderTop:`1px solid ${T.border}` }}>
-                          {planError}
-                        </div>
-                      )}
-                      {/* Plan items */}
-                      {novaState.planGenLoading && planItems.length === 0 ? (
-                        <div style={{ padding:'8px 10px', fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:T.muted, textAlign:'center' }}>Building plan…</div>
-                      ) : planItems.length === 0 && !planError ? (
-                        <div style={{ padding:'8px 10px', fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:T.muted, lineHeight:1.6 }}>
-                          {apiKey ? 'No plan yet — complete a Briefing or tap Refresh.' : 'Add an API key to generate plans.'}
-                        </div>
-                      ) : planItems.length > 0 ? (
-                        <div style={{ maxHeight:160, overflowY:'auto', padding:'2px 0 6px' }}>
-                          {planItems.map((item, idx) => {
-                            const dotColor = item.complexity === 'high' ? T.rose : item.complexity === 'medium' ? T.accent : T.muted;
-                            return (
-                              <div key={item.id} style={{ padding:'5px 10px', display:'flex', alignItems:'flex-start', gap:6, borderBottom: idx < planItems.length - 1 ? `1px solid ${T.border}` : 'none' }}>
-                                <div style={{ width:4, height:4, borderRadius:'50%', background:dotColor, marginTop:4, flexShrink:0 }} />
-                                <div style={{ flex:1, minWidth:0 }}>
-                                  <div className="plan-item-title" style={{ fontFamily:"'IBM Plex Mono',monospace", color:T.text, lineHeight:1.4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.title}</div>
-                                  <div className="plan-item-meta" style={{ fontFamily:"'IBM Plex Mono',monospace", color:T.muted, marginTop:1 }}>
-                                    {item.startMinutes !== undefined ? `${fmtTime(item.startMinutes)}` : ''} ~{item.estimatedMinutes}m{item.goalTitle ? ` · ${item.goalTitle.slice(0,18)}${item.goalTitle.length > 18 ? '…' : ''}` : ''}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })()}
-              </div>
-
-              {/* Programs */}
-              <div className="sec" style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column', gap:6 }}>
-                <div className="secl">
-                  <span className="pip" style={{ background: T.accent }} />
-                  PROGRAMS
-                </div>
-                {[
-                  {
-                    id: 'briefing',
-                    label: 'Briefing',
-                    desc: 'Full debrief to start your day',
-                    color: '#F59E0B',
-                    icon: (
-                      <svg width="13" height="13" viewBox="0 0 13 13">
-                        <circle cx="6.5" cy="6.5" r="5" fill="none" stroke="#F59E0B" strokeWidth="1.4"/>
-                        <path d="M6.5 4v3l2 1" fill="none" stroke="#F59E0B" strokeWidth="1.3" strokeLinecap="round"/>
-                      </svg>
-                    ),
-                  },
-                  {
-                    id: 'focus',
-                    label: 'Focus',
-                    desc: 'Quick sprint, get locked in',
-                    color: T.blue,
-                    icon: (
-                      <svg width="13" height="13" viewBox="0 0 13 13">
-                        <path d="M6.5 1.5 L11.5 6.5 L6.5 11.5 L1.5 6.5 Z" fill="none" stroke={T.blue} strokeWidth="1.4"/>
-                        <circle cx="6.5" cy="6.5" r="2" fill={T.blue}/>
-                      </svg>
-                    ),
-                  },
-                  {
-                    id: 'regroup',
-                    label: 'Re-group',
-                    desc: 'Reset and recalibrate',
-                    color: T.purple,
-                    icon: (
-                      <svg width="13" height="13" viewBox="0 0 13 13">
-                        <path d="M2 6.5 A4.5 4.5 0 0 1 10 3.5" fill="none" stroke={T.purple} strokeWidth="1.4" strokeLinecap="round"/>
-                        <path d="M11 6.5 A4.5 4.5 0 0 1 3 9.5" fill="none" stroke={T.purple} strokeWidth="1.4" strokeLinecap="round"/>
-                        <polygon points="10,1.5 12,4 8,4" fill={T.purple}/>
-                        <polygon points="3,8.5 1,11 5,11" fill={T.purple}/>
-                      </svg>
-                    ),
-                  },
-                  {
-                    id: 'preview',
-                    label: 'Preview',
-                    desc: 'Plan the next day',
-                    color: T.cyan,
-                    icon: (
-                      <svg width="13" height="13" viewBox="0 0 13 13">
-                        <path d="M6.5 1.5 L11.5 6.5 L6.5 11.5 L1.5 6.5 Z" fill="none" stroke={T.cyan} strokeWidth="1.4"/>
-                        <circle cx="6.5" cy="6.5" r="1.5" fill={T.cyan}/>
-                        <path d="M6.5 4v3l2 1" fill="none" stroke={T.cyan} strokeWidth="1.2" strokeLinecap="round"/>
-                      </svg>
-                    ),
-                  },
-                ].map(prog => {
-                  const isActive = waypointOpen && waypointContext?.type === 'program' && waypointContext?.id === prog.id;
-                  return (
-                    <div
-                      key={prog.id}
-                      onClick={() => {
-                        if (isActive) { closeWaypoint(); }
-                        else {
-                          openWaypoint({ type: 'program', id: prog.id });
-                          addSyncEvent('program_opened', prog.id);
-                        }
-                      }}
-                      style={{
-                        display:'flex', alignItems:'center', gap:9, padding:'8px 10px',
-                        borderRadius:7, cursor:'pointer', userSelect:'none',
-                        background: isActive ? `${prog.color}18` : 'transparent',
-                        border: `1px solid ${isActive ? prog.color + '55' : T.border}`,
-                        transition:'all .15s',
-                      }}
-                    >
-                      <div style={{ width:28, height:28, borderRadius:6, background:`${prog.color}18`, border:`1px solid ${prog.color}30`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                        {prog.icon}
-                      </div>
-                      <div style={{ flex:1, overflow:'hidden' }}>
-                        <div style={{ fontFamily:"'Syne',sans-serif", fontSize:11, fontWeight:700, color: isActive ? prog.color : T.text, letterSpacing:'.03em' }}>{prog.label}</div>
-                        <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:T.muted, marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{prog.desc}</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Bottom nav */}
-              <div className="sig-nav">
-                {[
-                  { page:'hq', label:'HQ', icon: (
-                    <svg width="16" height="16" viewBox="0 0 16 16">
-                      <rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1.2" fill={T.accent}/>
-                      <rect x="9" y="1.5" width="5.5" height="5.5" rx="1.2" fill={T.accent} opacity=".55"/>
-                      <rect x="1.5" y="9" width="5.5" height="5.5" rx="1.2" fill={T.accent} opacity=".55"/>
-                      <rect x="9" y="9" width="5.5" height="5.5" rx="1.2" fill={T.accent} opacity=".35"/>
-                    </svg>
-                  )},
-                  { page:'tracking', label:'Track', icon: (
-                    <svg width="16" height="16" viewBox="0 0 16 16">
-                      <path d="M2 12 L5.5 7 L9 10 L14 4" fill="none" stroke={T.blue} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                      <circle cx="14" cy="4" r="1.8" fill={T.blue}/>
-                    </svg>
-                  )},
-                  { page:'settings', label:'Settings', icon: (
-                    <svg width="16" height="16" viewBox="0 0 16 16">
-                      <circle cx="8" cy="8" r="5.5" fill="none" stroke={T.purple} strokeWidth="1.6"/>
-                      <circle cx="8" cy="8" r="2" fill={T.purple}/>
-                      <path d="M8 2.5v1M8 12.5v1M2.5 8h1M12.5 8h1" stroke={T.purple} strokeWidth="1.4" strokeLinecap="round"/>
-                    </svg>
-                  )},
-                  { page:'mindcheck', label:'Mind', icon: (
-                    <svg width="16" height="16" viewBox="0 0 16 16">
-                      <path d="M8 13C8 13 2.5 9.2 2.5 5.8a3.5 3.5 0 016.5-1.8 3.5 3.5 0 016.5 1.8C15.5 9.2 8 13 8 13z" fill="none" stroke={T.green} strokeWidth="1.6"/>
-                      <path d="M5.5 6.5l1.8 1.8L10 5.5" fill="none" stroke={T.green} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  )},
-                ].map(({ page, label, icon }) => (
-                  <button
-                    key={page}
-                    className={`nb${mainPage === page ? ' on' : ''}`}
-                    onClick={() => { setMainPage(page); closeWaypoint(); }}
-                  >
-                    <div className="ni">{icon}</div>
-                    <div className="nl">{label}</div>
-                  </button>
-                ))}
-              </div>
+              <NovaSidebarBlock
+                novaState={novaState}
+                waypointOpen={waypointOpen}
+                waypointContext={waypointContext}
+                prioritizeInput={prioritizeInput}
+                setPrioritizeInput={setPrioritizeInput}
+                generateNovaPlan={generateNovaPlan}
+                closeWaypoint={closeWaypoint}
+                openWaypoint={openWaypoint}
+                apiKey={apiKey}
+              />
+              <ProgramsList
+                waypointOpen={waypointOpen}
+                waypointContext={waypointContext}
+                openWaypoint={openWaypoint}
+                closeWaypoint={closeWaypoint}
+                addSyncEvent={addSyncEvent}
+              />
+              <BottomNav mainPage={mainPage} setMainPage={setMainPage} closeWaypoint={closeWaypoint} />
             </div>
 
             {/* ═══ COMMAND ═══ */}
@@ -2116,150 +1788,33 @@ import { drawOnwardPage, drawMapPage, drawPathsPage, drawSkillsPage, drawConstel
                 {waypointContext?.type === 'goal' && (() => {
                   const proj = projects.find(p => p.id === waypointContext.id);
                   if (!proj) return null;
-                  const pct = progress(proj);
                   return (
-                    <>
-                      <div className="wp-accent" style={{ background: proj.color }} />
-                      <div className="wp-hd">
-                        <button className="wp-close" onClick={closeWaypoint}>×</button>
-                        <div className="wp-badge">
-                          <span style={{ width:5, height:5, borderRadius:'50%', background:proj.color, display:'inline-block' }} />
-                          <span style={{ color: proj.color }}>Goal</span>
-                        </div>
-                        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                          {renamingGoalId === proj.id ? (
-                            <input
-                              autoFocus
-                              value={renameValue}
-                              onChange={e => setRenameValue(e.target.value)}
-                              onBlur={() => { renameGoal(proj.id, renameValue); setRenamingGoalId(null); }}
-                              onKeyDown={e => {
-                                if (e.key === 'Enter') { renameGoal(proj.id, renameValue); setRenamingGoalId(null); }
-                                if (e.key === 'Escape') setRenamingGoalId(null);
-                              }}
-                              style={{ flex:1, background:'transparent', border:'none', borderBottom:`1px solid ${proj.color}`, color:proj.color, fontFamily:"'Syne',sans-serif", fontSize:15, fontWeight:700, outline:'none', padding:'2px 0', width:'100%' }}
-                            />
-                          ) : (
-                            <div className="wp-ttl" style={{ color: proj.color, flex:1 }}>{proj.title}</div>
-                          )}
-                          <button
-                            title="Rename goal"
-                            onClick={() => { setRenamingGoalId(proj.id); setRenameValue(proj.title); }}
-                            style={{ background:'none', border:'none', color:T.muted, cursor:'pointer', fontSize:12, padding:'2px 4px', flexShrink:0, lineHeight:1 }}
-                          >✎</button>
-                          <button
-                            title="Delete goal"
-                            onClick={() => setConfirmDelete(proj.id)}
-                            style={{ background:'none', border:'none', color:T.rose, cursor:'pointer', fontSize:14, padding:'2px 4px', flexShrink:0, lineHeight:1, opacity:.7 }}
-                          >🗑</button>
-                        </div>
-                        {proj.desc && <div className="wp-dsc">{proj.desc}</div>}
-                      </div>
-                      <div className="wp-pg">
-                        <div className="wp-pgr">
-                          <span>Progress</span>
-                          <span style={{ fontSize:12, fontWeight:700, color: proj.color }}>{pct}%</span>
-                        </div>
-                        <div className="wp-pgtr">
-                          <div className="wp-pgf" style={{ width:`${pct}%`, background: proj.color }} />
-                        </div>
-                      </div>
-                      <div className="wp-bdy">
-                        {proj.subtasks.length > 0 && (
-                          <>
-                            <div className="wsh">
-                              <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" rx="1.5" fill="none" stroke={T.muted} strokeWidth="1.2"/><path d="M3 5l1.5 1.5 3-3" fill="none" stroke={T.muted} strokeWidth="1.2" strokeLinecap="round"/></svg>
-                              Subtasks
-                            </div>
-                            {proj.subtasks.map(st => (
-                              <div key={st.id} className="wti">
-                                <div className={`wck${st.done ? ' done' : ''}`} onClick={() => toggleSubtask(proj.id, st.id)}>
-                                  {st.done && <svg width="8" height="8" viewBox="0 0 8 8"><path d="M1 4l2 2 4-4" fill="none" stroke={T.green} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                                </div>
-                                <div className={`wtx${st.done ? ' dn' : ''}`}>{st.title}</div>
-                                <button className="w-del" onClick={() => deleteSubtask(proj.id, st.id)}>×</button>
-                              </div>
-                            ))}
-                          </>
-                        )}
-                        {proj.checkpoints.length > 0 && (
-                          <>
-                            <div className="wsh" style={{ marginTop: proj.subtasks.length ? 10 : 0 }}>
-                              <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" rx="1.5" fill="none" stroke={T.blue} strokeWidth="1.2" transform="rotate(45 5 5)"/></svg>
-                              <span style={{ color: T.blue }}>Checkpoints</span>
-                            </div>
-                            {proj.checkpoints.map(cp => (
-                              <div key={cp.id} className="wti">
-                                <div className={`wdm${cp.done ? ' done' : ''}`} onClick={() => toggleCheckpoint(proj.id, cp.id)}>
-                                  {cp.done && <svg width="7" height="7" viewBox="0 0 7 7" style={{ transform:'rotate(-45deg)' }}><path d="M1 3.5l1.8 1.8 3.5-3.5" fill="none" stroke={T.blue} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                                </div>
-                                <div className="wtx">{cp.title}</div>
-                                <button className="w-del" onClick={() => deleteCheckpoint(proj.id, cp.id)}>×</button>
-                              </div>
-                            ))}
-                          </>
-                        )}
-                        <div className="w-add-row">
-                          <input
-                            className="w-add-inp"
-                            placeholder="Add subtask or checkpoint..."
-                            value={addInput}
-                            onChange={e => setAddInput(e.target.value)}
-                            onKeyDown={e => e.key === 'Enter' && addSubtask()}
-                          />
-                        </div>
-                        <div style={{ display:'flex', gap:5, marginTop:5 }}>
-                          <button className="w-add-btn" onClick={addSubtask} disabled={!addInput.trim()}>+ Task</button>
-                          <button className="w-add-btn" onClick={addCheckpoint} disabled={!addInput.trim()}>◆ CP</button>
-                        </div>
-                        {pct === 100 && !proj.completedAt && (
-                          <button
-                            onClick={() => completeGoal(proj.id)}
-                            style={{ marginTop:10, width:'100%', background:`${T.green}12`, border:`1px solid ${T.green}40`, borderRadius:6, padding:'7px', color:T.green, fontFamily:"'Syne',sans-serif", fontSize:10, fontWeight:700, cursor:'pointer', letterSpacing:'.05em' }}
-                          >✓ Mark Complete</button>
-                        )}
-                        {sunId !== proj.id && (
-                          <button
-                            onClick={() => setSunId(proj.id)}
-                            style={{ marginTop:10, width:'100%', background:`${T.accent}12`, border:`1px solid ${T.accent}35`, borderRadius:6, padding:'7px', color:T.accent, fontFamily:"'Syne',sans-serif", fontSize:10, fontWeight:700, cursor:'pointer', letterSpacing:'.05em' }}
-                          >☀ Make Focus Sun</button>
-                        )}
-                        {sunId === proj.id && (
-                          <div style={{ marginTop:10, textAlign:'center', fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:T.accent, opacity:.7 }}>★ This is the Focus Sun</div>
-                        )}
-                      </div>
-                      <div className="wp-ai">
-                        <div className="wp-ai-h">
-                          <div className="wp-ai-orb">
-                            <svg width="13" height="13" viewBox="0 0 13 13"><polygon points="6.5,1 8,5 12.5,5.2 9.2,8 10.3,12.5 6.5,9.8 2.7,12.5 3.8,8 0.5,5.2 5,5" fill="currentColor"/></svg>
-                          </div>
-                          <div>
-                            <div className="wp-ai-lbl">{companionName}</div>
-                            <div className="wp-ai-sub">Contextual reflection</div>
-                          </div>
-                          <div className="wp-ai-dot" />
-                        </div>
-                        <div className="wp-ai-b">
-                          <div className="wp-ai-msg">
-                            {companionLoading ? 'thinking...' : (aiMsg || 'Ask for a check-in or subtask suggestion.')}
-                          </div>
-                          <div className="wp-ai-btns">
-                            <button
-                              className="waib"
-                              style={{ color: proj.color, borderColor:`${proj.color}40`, background:`${proj.color}10` }}
-                              onClick={checkIn}
-                              disabled={companionLoading}
-                            >✦ Check In</button>
-                            <button
-                              className="waib"
-                              style={{ color: T.purple, borderColor:`${T.purple}40`, background:`${T.purple}10` }}
-                              onClick={suggestSubtask}
-                              disabled={companionLoading}
-                            >+ Suggest</button>
-                          </div>
-                        </div>
-                      </div>
-                    </>
+                    <GoalDetailPanel
+                      proj={proj}
+                      renamingGoalId={renamingGoalId}
+                      renameValue={renameValue}
+                      setRenamingGoalId={setRenamingGoalId}
+                      setRenameValue={setRenameValue}
+                      addInput={addInput}
+                      setAddInput={setAddInput}
+                      toggleSubtask={toggleSubtask}
+                      toggleCheckpoint={toggleCheckpoint}
+                      deleteSubtask={deleteSubtask}
+                      deleteCheckpoint={deleteCheckpoint}
+                      addSubtask={addSubtask}
+                      addCheckpoint={addCheckpoint}
+                      completeGoal={completeGoal}
+                      renameGoal={renameGoal}
+                      closeWaypoint={closeWaypoint}
+                      setConfirmDelete={setConfirmDelete}
+                      sunId={sunId}
+                      setSunId={setSunId}
+                      companionLoading={companionLoading}
+                      aiMsg={aiMsg}
+                      companionName={companionName}
+                      checkIn={checkIn}
+                      suggestSubtask={suggestSubtask}
+                    />
                   );
                 })()}
 
@@ -2299,201 +1854,51 @@ import { drawOnwardPage, drawMapPage, drawPathsPage, drawSkillsPage, drawConstel
                   />
                 )}
 
-                {waypointContext?.type === 'canvas-panel' && (() => {
-                  const panelId = waypointContext.id;
-                  return (
-                    <>
-                      <div className="wp-accent" style={{ background: T.accent }} />
-                      <div className="wp-hd">
-                        <button className="wp-close" onClick={closeWaypoint}>×</button>
-                        <div className="wp-badge"><span style={{ color:T.muted }}>Canvas</span></div>
-                        <div className="wp-ttl" style={{ color:T.accent }}>{panelId.toUpperCase()}</div>
-                      </div>
-                      <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
-                        {panelId === 'onward' && (
-                          <OnwardPanel
-                            onwardItems={onwardItems}
-                            onwardForm={onwardForm}
-                            setOnwardForm={setOnwardForm}
-                            projects={projects}
-                            onAdd={addOnwardItem}
-                            onDelete={deleteOnwardItem}
-                            onToggleDone={toggleOnwardDone}
-                            selectedId={selectedId}
-                            onSelectGoal={id => { setSelectedId(id); openWaypoint({ type:'goal', id }); }}
-                            onToggleFocus={toggleFocus}
-                            onConfirmDelete={setConfirmDelete}
-                            availableTasks={availableTasks}
-                            onDragStart={task => setDraggedTask(task)}
-                            onMoveItem={moveOnwardItem}
-                            onStartFocus={handleStartFocus}
-                            onReturnToAvailable={returnOnwardItemToAvailable}
-                            backlogItems={backlogItems}
-                            deferredItems={deferredItems}
-                            selectedForToday={selectedForToday}
-                            onRestoreFromBacklog={handleRestoreFromBacklog}
-                          />
-                        )}
-                        {panelId === 'map' && (
-                          <MapPanel
-                            hoveredWeek={hoveredWeek}
-                            projects={projects}
-                            weeklyInsights={novaState.weeklyInsights}
-                            onWeeklyCheckin={scanWeeklyGoals}
-                            companionLoading={novaState.weeklyInsights?.loading || false}
-                          />
-                        )}
-                        {panelId === 'skills' && (
-                          <SkillsPanel
-                            skills={skills}
-                            selectedSkillId={selectedSkillId}
-                            onUpdateLevel={updateSkillLevel}
-                            onAddSubskill={addSubskill}
-                          />
-                        )}
-                      </div>
-                    </>
-                  );
-                })()}
+                {waypointContext?.type === 'canvas-panel' && (
+                  <CanvasPanelWrapper
+                    panelId={waypointContext.id}
+                    closeWaypoint={closeWaypoint}
+                    onwardItems={onwardItems}
+                    onwardForm={onwardForm}
+                    setOnwardForm={setOnwardForm}
+                    projects={projects}
+                    addOnwardItem={addOnwardItem}
+                    deleteOnwardItem={deleteOnwardItem}
+                    toggleOnwardDone={toggleOnwardDone}
+                    selectedId={selectedId}
+                    openWaypoint={openWaypoint}
+                    setSelectedId={setSelectedId}
+                    toggleFocus={toggleFocus}
+                    setConfirmDelete={setConfirmDelete}
+                    availableTasks={availableTasks}
+                    setDraggedTask={setDraggedTask}
+                    moveOnwardItem={moveOnwardItem}
+                    handleStartFocus={handleStartFocus}
+                    returnOnwardItemToAvailable={returnOnwardItemToAvailable}
+                    backlogItems={backlogItems}
+                    deferredItems={deferredItems}
+                    selectedForToday={selectedForToday}
+                    handleRestoreFromBacklog={handleRestoreFromBacklog}
+                    hoveredWeek={hoveredWeek}
+                    novaState={novaState}
+                    scanWeeklyGoals={scanWeeklyGoals}
+                    skills={skills}
+                    selectedSkillId={selectedSkillId}
+                    updateSkillLevel={updateSkillLevel}
+                    addSubskill={addSubskill}
+                  />
+                )}
 
-                {waypointContext?.type === 'nova-insights' && (() => {
-                  const confidence = computePlanningConfidence(novaState.syncEvents);
-                  const confidenceColor = confidence >= 70 ? T.green : confidence >= 40 ? T.accent : T.muted;
-                  const evts = novaState.syncEvents;
-                  const accepted  = evts.filter(e => e.type === 'task_accepted').length;
-                  const rejected  = evts.filter(e => e.type === 'task_rejected').length;
-                  const completed = evts.filter(e => e.type === 'task_completed').length;
-                  const total = accepted + rejected;
-                  const acceptPct   = total > 0 ? Math.round(accepted / total * 100) : 50;
-                  const completePct = accepted > 0 ? Math.round(Math.min(completed / accepted, 1) * 100) : 0;
-                  const meaningfulEvts = evts.filter(e => ["task_accepted","task_rejected","task_completed","briefing_done"].includes(e.type));
-                  const richPct     = Math.round(Math.min(meaningfulEvts.length / 40, 1) * 100);
-                  const streak      = calcStreak();
-                  const weekly      = getWeeklyData();
-                  const avgPerDay   = weekly.length ? (weekly.reduce((s, d) => s + d.count, 0) / weekly.length).toFixed(1) : '0';
-                  const weekMax     = Math.max(...weekly.map(d => d.count), 1);
-                  const plan = novaState.dailyPlan;
-                  const today = new Date().toISOString().slice(0, 10);
-                  const planItems = (plan?.date === today && plan?.items) ? plan.items : [];
-                  const recentEvents = [...evts].reverse().slice(0, 12);
-                  const relTime = (ts) => {
-                    const diff = Date.now() - new Date(ts).getTime();
-                    if (diff < 60000) return 'just now';
-                    if (diff < 3600000) return `${Math.floor(diff/60000)}m ago`;
-                    if (diff < 86400000) return `${Math.floor(diff/3600000)}h ago`;
-                    return `${Math.floor(diff/86400000)}d ago`;
-                  };
-                  const evtLabel = { task_accepted:'Accepted', task_rejected:'Rejected', task_completed:'Completed', briefing_done:'Briefing', program_opened:'Opened' };
-                  const evtColor = { task_accepted: T.green, task_rejected: T.rose, task_completed: T.accent, briefing_done: T.blue, program_opened: T.muted };
-                  return (
-                    <>
-                      <div className="wp-accent" style={{ background: T.accent }} />
-                      <div className="wp-hd">
-                        <button className="wp-close" onClick={closeWaypoint}>×</button>
-                        <div className="wp-badge"><span style={{ color:T.muted }}>Nova</span></div>
-                        <div className="wp-ttl" style={{ color:T.accent }}>PRODUCTIVITY INSIGHTS</div>
-                      </div>
-                      <div style={{ flex:1, overflowY:'auto', padding:'16px 18px', display:'flex', flexDirection:'column', gap:18 }}>
-
-                        {/* Confidence breakdown */}
-                        <div>
-                          <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:T.muted, letterSpacing:'.1em', marginBottom:10 }}>PLANNING CONFIDENCE</div>
-                          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
-                            <div style={{ fontFamily:"'Syne',sans-serif", fontSize:32, fontWeight:800, color:confidenceColor, lineHeight:1 }}>{confidence}%</div>
-                            <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:confidenceColor }}>{confidence >= 70 ? 'Nova knows you well' : confidence >= 40 ? 'Nova is learning fast' : 'Nova is getting started'}</div>
-                          </div>
-                          {[
-                            { label:'Suggestion accuracy', pct: acceptPct, detail:`${accepted} accepted / ${rejected} rejected` },
-                            { label:'Plan completion',     pct: completePct, detail:`${completed} of ${accepted} accepted tasks done` },
-                            { label:'Data richness',       pct: richPct, detail:`${meaningfulEvts.length} meaningful / ${evts.length} total events` },
-                          ].map(row => (
-                            <div key={row.label} style={{ marginBottom:8 }}>
-                              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
-                                <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:T.text }}>{row.label}</div>
-                                <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:T.muted }}>{row.detail}</div>
-                              </div>
-                              <div style={{ height:3, borderRadius:2, background:T.border, overflow:'hidden' }}>
-                                <div style={{ height:'100%', width:`${row.pct}%`, background: row.pct >= 70 ? T.green : row.pct >= 40 ? T.accent : T.muted, borderRadius:2 }} />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Work pattern */}
-                        <div>
-                          <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:T.muted, letterSpacing:'.1em', marginBottom:8 }}>WORK PATTERN</div>
-                          <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color: novaState.routine ? T.text : T.muted, lineHeight:1.7, background:T.bg, padding:'10px 12px', borderRadius:6, border:`1px solid ${T.border}` }}>
-                            {novaState.routine?.summary || 'No pattern learned yet — complete a Briefing to begin.'}
-                          </div>
-                        </div>
-
-                        {/* Performance */}
-                        <div>
-                          <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:T.muted, letterSpacing:'.1em', marginBottom:10 }}>PERFORMANCE</div>
-                          <div style={{ display:'flex', gap:12, marginBottom:12 }}>
-                            {[
-                              { label:'Day Streak', value: streak, unit:'days' },
-                              { label:'Daily Avg',  value: avgPerDay, unit:'tasks/day' },
-                            ].map(stat => (
-                              <div key={stat.label} style={{ flex:1, background:T.bg, border:`1px solid ${T.border}`, borderRadius:6, padding:'8px 10px' }}>
-                                <div style={{ fontFamily:"'Syne',sans-serif", fontSize:20, fontWeight:800, color:T.accent }}>{stat.value}</div>
-                                <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:8, color:T.muted, marginTop:2 }}>{stat.unit}</div>
-                                <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:8, color:T.muted }}>{stat.label}</div>
-                              </div>
-                            ))}
-                          </div>
-                          <div style={{ display:'flex', alignItems:'flex-end', gap:4, height:40 }}>
-                            {weekly.map(d => (
-                              <div key={d.day} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
-                                <div style={{ width:'100%', height: d.count > 0 ? `${Math.round(d.count / weekMax * 32)}px` : '2px', background: d.isToday ? T.accent : d.count > 0 ? `${T.accent}60` : T.border, borderRadius:2, transition:'height .3s' }} />
-                                <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:7, color: d.isToday ? T.accent : T.muted }}>{d.day}</div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Today's plan */}
-                        {planItems.length > 0 && (
-                          <div>
-                            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
-                              <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:T.muted, letterSpacing:'.1em' }}>TODAY'S PLAN</div>
-                              <button onClick={e => { e.stopPropagation(); generateNovaPlan(); }} disabled={novaState.planGenLoading || !apiKey} style={{ background:'none', border:`1px solid ${T.border}`, borderRadius:4, color: novaState.planGenLoading ? T.muted : T.accent, cursor: novaState.planGenLoading || !apiKey ? 'default' : 'pointer', fontSize:8, padding:'2px 6px', fontFamily:"'IBM Plex Mono',monospace", opacity: novaState.planGenLoading ? .5 : 1 }}>{novaState.planGenLoading ? '···' : 'REFRESH'}</button>
-                            </div>
-                            {planItems.map((item, idx) => {
-                              const dotColor = item.complexity === 'high' ? T.rose : item.complexity === 'medium' ? T.accent : T.muted;
-                              return (
-                                <div key={item.id} style={{ padding:'8px 10px', marginBottom:6, background:T.bg, border:`1px solid ${T.border}`, borderLeft:`3px solid ${dotColor}`, borderRadius:4 }}>
-                                  <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:T.text, marginBottom:3 }}>{item.title}</div>
-                                  <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                                    <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:8, color:T.muted }}>~{item.estimatedMinutes}m</span>
-                                    {item.goalTitle && <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:8, color:T.muted }}>· {item.goalTitle}</span>}
-                                    <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:8, padding:'1px 5px', borderRadius:3, background:`${dotColor}20`, color:dotColor, textTransform:'uppercase' }}>{item.complexity}</span>
-                                  </div>
-                                  {item.rationale && <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:8, color:T.muted, marginTop:4, lineHeight:1.5, opacity:.8 }}>{item.rationale}</div>}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-
-                        {/* Recent activity */}
-                        {recentEvents.length > 0 && (
-                          <div>
-                            <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:T.muted, letterSpacing:'.1em', marginBottom:8 }}>RECENT ACTIVITY</div>
-                            {recentEvents.map((ev, i) => (
-                              <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 0', borderBottom: i < recentEvents.length - 1 ? `1px solid ${T.border}` : 'none' }}>
-                                <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:8, padding:'2px 5px', borderRadius:3, background:`${evtColor[ev.type] || T.muted}20`, color: evtColor[ev.type] || T.muted, textTransform:'uppercase', flexShrink:0 }}>{evtLabel[ev.type] || ev.type}</span>
-                                <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:T.text, flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{ev.detail}</span>
-                                <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:8, color:T.muted, flexShrink:0 }}>{relTime(ev.ts)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                      </div>
-                    </>
-                  );
-                })()}
+                {waypointContext?.type === 'nova-insights' && (
+                  <NovaInsightsPanel
+                    novaState={novaState}
+                    apiKey={apiKey}
+                    closeWaypoint={closeWaypoint}
+                    generateNovaPlan={generateNovaPlan}
+                    calcStreak={calcStreak}
+                    getWeeklyData={getWeeklyData}
+                  />
+                )}
 
                 {!waypointContext && (
                   <div className="wp-await">
@@ -2516,175 +1921,25 @@ import { drawOnwardPage, drawMapPage, drawPathsPage, drawSkillsPage, drawConstel
             />
           )}
 
-          {/* ── Legacy SMART Modal (kept for reference, hidden) ── */}
-          {/* eslint-disable-next-line no-constant-binary-expression */}
-          {false && modal && (
-            <div className="overlay" onClick={(e) => { if (e.target.className === "overlay") setModal(false); }}>
-              <div className="modal">
-                <h2>NEW GOAL</h2>
-                <div className="smart-status">
-                  {[
-                    { l:'S', ok: form.title.trim().length > 0 },
-                    { l:'M', ok: form.measurable.trim().length > 0 },
-                    { l:'A', ok: form.achievable.trim().length > 0 },
-                    { l:'R', ok: form.relevant.trim().length > 0 },
-                    { l:'T', ok: form.deadline.length > 0 },
-                  ].map(({ l, ok }) => (
-                    <div key={l} className={`s-dot ${ok ? 'on' : 'off'}`}>{ok ? '✓' : l}</div>
-                  ))}
-                  <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:T.muted, marginLeft:'auto' }}>all 5 required</span>
-                </div>
-                <div className="smart-field">
-                  <div className="smart-lbl">
-                    <div className="smart-badge" style={{ background:`${T.accent}20`, color:T.accent }}>S</div>
-                    <span className="smart-name" style={{ color:T.accent }}>Specific</span>
-                    <span className="smart-hint">What exactly are you working toward?</span>
-                  </div>
-                  <input className={`s-inp${form.title.trim() ? ' ok' : ''}`}
-                    placeholder="e.g. Land a software role via Handshake by graduation"
-                    value={form.title} autoFocus
-                    onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
-                  <input className="s-inp"
-                    placeholder="Brief context or description (optional)..."
-                    value={form.desc}
-                    onChange={e => setForm(f => ({ ...f, desc: e.target.value }))} />
-                </div>
-                <div className="smart-field">
-                  <div className="smart-lbl">
-                    <div className="smart-badge" style={{ background:`${T.blue}20`, color:T.blue }}>M</div>
-                    <span className="smart-name" style={{ color:T.blue }}>Measurable</span>
-                    <span className="smart-hint">How will you know you succeeded?</span>
-                  </div>
-                  <input className={`s-inp${form.measurable.trim() ? ' ok' : ''}`}
-                    placeholder="e.g. Receive and accept a written job offer"
-                    value={form.measurable}
-                    onChange={e => setForm(f => ({ ...f, measurable: e.target.value }))} />
-                </div>
-                <div className="smart-field">
-                  <div className="smart-lbl">
-                    <div className="smart-badge" style={{ background:`${T.green}20`, color:T.green }}>A</div>
-                    <span className="smart-name" style={{ color:T.green }}>Achievable</span>
-                    <span className="smart-hint">Why is this realistic right now?</span>
-                  </div>
-                  <input className={`s-inp${form.achievable.trim() ? ' ok' : ''}`}
-                    placeholder="e.g. I have relevant skills and 3 months to prepare"
-                    value={form.achievable}
-                    onChange={e => setForm(f => ({ ...f, achievable: e.target.value }))} />
-                </div>
-                <div className="smart-field">
-                  <div className="smart-lbl">
-                    <div className="smart-badge" style={{ background:`${T.purple}20`, color:T.purple }}>R</div>
-                    <span className="smart-name" style={{ color:T.purple }}>Relevant</span>
-                    <span className="smart-hint">Why does this matter to you?</span>
-                  </div>
-                  <input className={`s-inp${form.relevant.trim() ? ' ok' : ''}`}
-                    placeholder="e.g. Financial independence and work I care about"
-                    value={form.relevant}
-                    onChange={e => setForm(f => ({ ...f, relevant: e.target.value }))} />
-                </div>
-                <div className="smart-field">
-                  <div className="smart-lbl">
-                    <div className="smart-badge" style={{ background:`${T.rose}20`, color:T.rose }}>T</div>
-                    <span className="smart-name" style={{ color:T.rose }}>Time-bound</span>
-                    <span className="smart-hint">Target deadline</span>
-                  </div>
-                  <input type="date"
-                    className={`s-inp${form.deadline ? ' ok' : ''}`}
-                    style={{ fontFamily:"'IBM Plex Mono',monospace", colorScheme:'dark' }}
-                    value={form.deadline}
-                    min={new Date().toISOString().split('T')[0]}
-                    onChange={e => setForm(f => ({ ...f, deadline: e.target.value }))} />
-                </div>
-                {/* Priority + Horizon */}
-                <div style={{ display:'flex', gap:10, marginBottom:16 }}>
-                  <div style={{ flex:1 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:7 }}>
-                      <div style={{ width:20, height:20, borderRadius:4, background:`${T.rose}20`, color:T.rose, fontSize:9, fontWeight:800, fontFamily:"'IBM Plex Mono',monospace", display:'flex', alignItems:'center', justifyContent:'center' }}>P</div>
-                      <span style={{ fontSize:12, fontWeight:700, letterSpacing:'.04em' }}>Priority</span>
-                    </div>
-                    <select className="s-inp" value={form.priority}
-                      onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
-                      style={{ fontFamily:"'IBM Plex Mono',monospace" }}>
-                      <option value="low">Low</option>
-                      <option value="high">High</option>
-                    </select>
-                  </div>
-                  <div style={{ flex:1 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:7 }}>
-                      <div style={{ width:20, height:20, borderRadius:4, background:`${T.blue}20`, color:T.blue, fontSize:9, fontWeight:800, fontFamily:"'IBM Plex Mono',monospace", display:'flex', alignItems:'center', justifyContent:'center' }}>H</div>
-                      <span style={{ fontSize:12, fontWeight:700, letterSpacing:'.04em' }}>Horizon</span>
-                    </div>
-                    <select className="s-inp" value={form.scale}
-                      onChange={e => setForm(f => ({ ...f, scale: e.target.value }))}
-                      style={{ fontFamily:"'IBM Plex Mono',monospace" }}>
-                      <option value="short">Short-term</option>
-                      <option value="medium">Medium-term</option>
-                      <option value="long">Long-term</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="m-btns">
-                  <button className="m-cancel" onClick={() => { setModal(false); setForm({ title:'', desc:'', measurable:'', achievable:'', relevant:'', deadline:'', priority:'low', scale:'short' }); }}>Cancel</button>
-                  <button className="m-ok" onClick={addProject} disabled={!smartComplete(form)}>Create + Generate Tasks</button>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* ── Onward Task Popover ── */}
-          {onwardClickedItem && (() => {
-            const item = onwardItems.find(it => it.id === onwardClickedItem.id) || onwardClickedItem;
-            const fmt  = (m) => { const h = Math.floor(m/60); const min = m%60; const ap = h>=12?'PM':'AM'; return `${h%12||12}:${min.toString().padStart(2,'0')}${ap}`; };
-            const color = item.priority === 'high' ? T.rose : T.blue;
-            const linkedGoal = projects.find(p => p.id === item.goalId);
-            return (
-              <div style={{ position:'fixed', inset:0, zIndex:300 }} onClick={() => setOnwardClickedItem(null)}>
-                <div
-                  onClick={e => e.stopPropagation()}
-                  style={{
-                    position:'fixed',
-                    left: Math.min(onwardClickedItem.cardX + 8, window.innerWidth - 260),
-                    top:  Math.min(onwardClickedItem.cardY + 8, window.innerHeight - 200),
-                    width:240,
-                    background:'#0d1017',
-                    border:`1px solid ${color}55`,
-                    borderRadius:10,
-                    padding:'14px 16px',
-                    boxShadow:`0 8px 32px rgba(0,0,0,.6)`,
-                    zIndex:301,
-                  }}
-                >
-                  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                    <div style={{ width:6, height:6, borderRadius:'50%', background:color, flexShrink:0 }} />
-                    <span style={{ fontFamily:"'Syne',sans-serif", fontSize:13, fontWeight:700, color:T.text, flex:1 }}>{item.title}</span>
-                    <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:color }}>{fmt(item.hour)}</span>
-                  </div>
-                  {linkedGoal && (
-                    <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:T.muted, marginBottom:10 }}>
-                      ↳ {linkedGoal.title}
-                    </div>
-                  )}
-                  <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
-                    <button
-                      onClick={() => {
-                        startSession(item.title, item.goalId || null);
-                        setOnwardClickedItem(null);
-                        setMainPage('tracking');
-                      }}
-                      style={{ background:`${T.green}18`, border:`1px solid ${T.green}55`, borderRadius:6, color:T.green, padding:'8px 0', fontFamily:"'Syne',sans-serif", fontSize:11, fontWeight:700, cursor:'pointer', letterSpacing:'.06em' }}
-                    >▶ Start Focus Session</button>
-                    <button
-                      onClick={() => {
-                        setOnwardItems(prev => prev.map(it => it.id===item.id ? { ...it, done: !it.done } : it));
-                        setOnwardClickedItem(null);
-                      }}
-                      style={{ background: item.done ? `${T.muted}18` : `${color}18`, border:`1px solid ${item.done ? T.muted : color}55`, borderRadius:6, color: item.done ? T.muted : color, padding:'7px 0', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, cursor:'pointer' }}
-                    >{item.done ? '↩ Mark Undone' : '✓ Mark Done'}</button>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
+          {onwardClickedItem && (
+            <OnwardTaskPopover
+              item={onwardItems.find(it => it.id === onwardClickedItem.id) || onwardClickedItem}
+              cardX={onwardClickedItem.cardX}
+              cardY={onwardClickedItem.cardY}
+              projects={projects}
+              onStartFocus={(title, goalId) => {
+                startSession(title, goalId);
+                setOnwardClickedItem(null);
+                setMainPage('tracking');
+              }}
+              onToggleDone={(id) => {
+                setOnwardItems(prev => prev.map(it => it.id===id ? { ...it, done: !it.done } : it));
+                setOnwardClickedItem(null);
+              }}
+              onClose={() => setOnwardClickedItem(null)}
+            />
+          )}
 
           {/* ── Delete confirmation ── */}
           {confirmDelete && (() => {
@@ -2714,54 +1969,11 @@ import { drawOnwardPage, drawMapPage, drawPathsPage, drawSkillsPage, drawConstel
 
           {/* ── Deadline Notifier ── */}
           {showDeadlineNotifier && deadlineAlerts.length > 0 && (
-            <div className="overlay" onClick={() => setShowDeadlineNotifier(false)}>
-              <div className="modal" style={{ width:360, maxHeight:'70vh' }} onClick={e => e.stopPropagation()}>
-                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16 }}>
-                  <span style={{ fontSize:20 }}>⏰</span>
-                  <h2 style={{ color:T.accent, fontSize:16, margin:0 }}>Deadline Alerts</h2>
-                </div>
-                <div style={{ maxHeight:'50vh', overflowY:'auto', marginBottom:16 }}>
-                  {deadlineAlerts.map(alert => (
-                    <div key={alert.id} style={{
-                      padding:'10px 12px',
-                      background:'rgba(27,35,54,0.5)',
-                      borderRadius:6,
-                      marginBottom:8,
-                      borderLeft:`3px solid ${alert.color}`,
-                    }}>
-                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-                        <span style={{ fontSize:12, color:T.text, fontWeight:600 }}>{alert.title}</span>
-                        <span style={{
-                          fontFamily:"'IBM Plex Mono',monospace",
-                          fontSize:9,
-                          color:alert.color,
-                          padding:'2px 6px',
-                          background:`${alert.color}15`,
-                          borderRadius:4,
-                        }}>
-                          {alert.type === 'overdue' ? `${Math.abs(alert.days)}d overdue` :
-                           alert.days === 0 ? 'Due today' :
-                           alert.days === 1 ? '1 day left' :
-                           `${alert.days} days left`}
-                        </span>
-                      </div>
-                      <div style={{ fontSize:9, color:T.muted, marginTop:4, fontFamily:"'IBM Plex Mono',monospace" }}>
-                        {alert.priority === 'high' ? 'High priority' : 'Low priority'} • Click to view in Map
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="m-btns" style={{ justifyContent:'space-between' }}>
-                  <button className="m-cancel" onClick={() => setShowDeadlineNotifier(false)}>Dismiss</button>
-                  <button
-                    className="m-ok"
-                    onClick={() => { setShowDeadlineNotifier(false); setActivePage('map'); }}
-                  >
-                    View in Map
-                  </button>
-                </div>
-              </div>
-            </div>
+            <DeadlineNotifier
+              deadlineAlerts={deadlineAlerts}
+              onDismiss={() => setShowDeadlineNotifier(false)}
+              onViewInMap={() => { setShowDeadlineNotifier(false); setActivePage('map'); }}
+            />
           )}
 
           {/* ── Immersive Focus Screen ── */}

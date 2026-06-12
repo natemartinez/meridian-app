@@ -29,3 +29,15 @@ html, body, #root { margin: 0; padding: 0; height: 100%; background: #07090f; }
   float: left;
   height: 0;
 }
+
+/* NOVA Toast slide-in animation */
+@keyframes novaToastIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

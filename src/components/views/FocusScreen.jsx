@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { T } from '../../utils/theme.js';
 import { uid } from '../../utils/helpers.js';
+import { useNovaInteractionStore } from '../../store/novaInteractionStore.js';
 
 const POMODORO_KEY = 'meridian_pomodoro';
 
@@ -225,6 +226,13 @@ export default function FocusScreen({
 
         <button
           onClick={() => {
+            if (focusRating) {
+              useNovaInteractionStore.getState().fireEvent('focus_rated', {
+                rating: focusRating,
+                label: taskTitle,
+                goalId,
+              });
+            }
             onExit && onExit();
           }}
           style={{

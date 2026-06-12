@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import RegroupPanel from './RegroupPanel.jsx';
 import RetryFeedback from './RetryFeedback.jsx';
 import { parseDeferClue } from '../../utils/helpers.js';
+import { useNovaInteractionStore } from '../../store/novaInteractionStore.js';
 
 function NOVAProgramPanel({
   progId, novaState, setNovaState, novaChatInput, setNovaChatInput, novaLoading,
@@ -143,6 +144,9 @@ function NOVAProgramPanel({
   const finishBriefing = () => {
     setBriefingPhase('done');
     addSyncEvent('briefing_done', `Selected ${selectedForToday.length} objectives`);
+    useNovaInteractionStore.getState().fireEvent('briefing_done', {
+      selectedCount: selectedForToday.length,
+    });
   };
 
   // ── Render ──
@@ -543,6 +547,7 @@ function NOVAProgramPanel({
                     setOnwardItems(prev => [...prev, { id: uid(), title: task.text, hour: 480, priority: 'low', goalId: null, novaTaskId: task.id, done: false, createdAt: Date.now() }]);
                     setNovaState(prev => ({ ...prev, suggestedTasks: prev.suggestedTasks.map(t => t.id === task.id ? { ...t, accepted: true } : t) }));
                     addSyncEvent('task_accepted', task.text);
+                    useNovaInteractionStore.getState().fireEvent('task_accepted', { title: task.text });
                   }}
                   style={{ background:`${meta.color}22`, border:`1px solid ${meta.color}55`, borderRadius:4, color:meta.color, cursor:'pointer', fontSize:9, padding:'2px 6px', fontFamily:"'IBM Plex Mono',monospace", whiteSpace:'nowrap' }}
                 >+ Onward</button>

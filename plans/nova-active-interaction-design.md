@@ -215,34 +215,110 @@ Queue System:
 
 ## 7. Implementation Plan
 
-### Phase 1: Core Engine (New Hook)
+### Phase 1: Core Engine (Zustand Store + Hook)
+
+**Critical Design Constraint: Referential Stability**
+
+The engine uses timers (cooldowns, idle detection), event listeners, and `useEffect` cleanup. If callbacks or data references change on every render, timers will never fire, listeners will be re-attached on every render, and the system will be broken. **Zustand** solves this because store actions are created once and never change reference.
+
+#### Step 1a: Create the Zustand Store
+
+Create [`src/store/novaInteractionStore.js`](src/store/novaInteractionStore.js):
+
+```javascript
+import { create } from 'zustand';
+
+export const useNovaInteractionStore = create((set, get) => ({
+  // --- State ---
+  cooldowns: {},           // { patternId: expiryTimestamp }
+  queue: [],               // pending interaction queue
+  toastQueue: [],          // currently visible toasts
+  idleTimer: null,         // timer ID for idle detection
+
+  // --- Actions (stable references, created once) ---
+
+  fireEvent: (type, payload) => {
+    const state = get();
+    // 1. Match triggers against pattern registry
+    // 2. Check cooldowns via _checkCooldown
+    // 3. Resolve variables from event payload + app state
+    // 4. Push to queue or show toast
+  },
+
+  dismissToast: (toastId) => {
+    set((state) => ({
+      toastQueue: state.toastQueue.filter(t => t.id !== toastId),
+    }));
+  },
+
+  clearQueue: () => set({ queue: [] }),
+
+  // --- Internal helpers ---
+
+  _checkCooldown: (patternId) => {
+    const cooldowns = get().cooldowns;
+    return !cooldowns[patternId] || Date.now() > cooldowns[patternId];
+  },
+
+  _setCooldown: (patternId, durationMs) => {
+    set((state) => ({
+      cooldowns: {
+        ...state.cooldowns,
+        [patternId]: Date.now() + durationMs,
+      },
+    }));
+  },
+}));
+```
+
+#### Step 1b: Create the Interaction Hook
 
 Create [`src/hooks/useNovaInteractions.js`](src/hooks/useNovaInteractions.js):
 
 ```javascript
-export function useNovaInteractions({
-  // Dependencies from app state
-  projects, onwardItems, sessions, focusMode,
-  novaState, knowledgePool, waypointContext,
-  // Callbacks
-  addSyncEvent, openWaypoint, closeWaypoint,
-  setNovaChatInput, sendNOVAMessage,
-}) {
-  // 1. Pattern definitions registry
-  // 2. Trigger listener (subscribes to app events)
-  // 3. Cooldown manager
-  // 4. Queue manager
-  // 5. Presentation layer (toast / waypoint / inline)
-  // 6. Variable resolver (fills template slots)
+import { useEffect, useRef } from 'react';
+import { useNovaInteractionStore } from '../store/novaInteractionStore';
+
+export function useNovaInteractions() {
+  const store = useNovaInteractionStore();
+
+  // Use refs to hold latest app state without triggering re-renders
+  const appStateRef = useRef({});
   
+  // This is called by App.jsx on every render to keep ref current
+  const syncAppState = (appState) => {
+    appStateRef.current = appState;
+  };
+
+  // Timers and intervals use store.getState() to read latest state
+  // without needing stable callback references
+  useEffect(() => {
+    const idleTimer = setInterval(() => {
+      const state = useNovaInteractionStore.getState();
+      // Check idle time, fire idle events if needed
+    }, 30000);
+
+    return () => clearInterval(idleTimer);
+  }, []); // Empty deps — stable because we use store.getState()
+
   return {
-    registerInteraction,  // for adding new patterns
-    fireInteraction,      // for manual triggering
-    pendingInteractions,  // current queue
-    dismissInteraction,   // user dismissed
+    fireEvent: store.fireEvent,
+    dismissToast: store.dismissToast,
+    clearQueue: store.clearQueue,
+    queue: store.queue,
+    toastQueue: store.toastQueue,
+    syncAppState,  // called by App.jsx each render
   };
 }
 ```
+
+#### Why This Fixes Referential Instability
+
+| Approach | Problem | Solution |
+|----------|---------|----------|
+| Props-based hook | Inline callbacks + arrays from state create new refs every render → `useEffect` cleanup re-runs → timers never fire | ❌ Broken |
+| `useRef` pattern inside hook | Store latest callbacks/data in refs; `useEffect` deps are empty/stable | ✅ Works |
+| Zustand store | Actions are created once, never change reference; `store.getState()` reads latest data without deps | ✅ Best |
 
 ### Phase 2: Pattern Definitions
 
@@ -272,16 +348,26 @@ Create toast/notification UI components:
 
 ```mermaid
 flowchart TD
-    UserAction[User Action] --> EventBus[Event Bus]
-    AppState[App State Change] --> EventBus
-    Timer[Time-based Trigger] --> EventBus
+    UserAction[User Action] --> FireEvent[fireEvent type, payload]
+    AppState[App State Change] --> FireEvent
+    Timer[Time-based Trigger] --> StoreGet[store.getState]
     
-    EventBus --> TriggerMatcher[Trigger Matcher]
-    TriggerMatcher -->|Match found| CooldownCheck{Cooldown OK?}
-    CooldownCheck -->|Yes| VariableResolver[Resolve Variables]
+    FireEvent --> ZustandStore[Zustand NovaInteractionStore]
+    StoreGet --> ZustandStore
+    
+    subgraph ZustandStore[Zustand Store - Stable Actions]
+        TriggerMatcher[Trigger Matcher]
+        CooldownCheck{Cooldown OK?}
+        VariableResolver[Resolve Variables]
+        PriorityQueue[Priority Queue]
+    end
+    
+    ZustandStore -->|fireEvent| TriggerMatcher
+    TriggerMatcher -->|Match found| CooldownCheck
+    CooldownCheck -->|Yes| VariableResolver
     CooldownCheck -->|No| Drop[Drop / Queue]
     
-    VariableResolver --> PriorityQueue[Priority Queue]
+    VariableResolver --> PriorityQueue
     PriorityQueue --> Presenter{Presentation Type}
     
     Presenter -->|Toast| NovaToast[NovaToast Component]
@@ -290,18 +376,20 @@ flowchart TD
     
     NovaToast -->|User clicks action| ActionHandler[Execute Pattern Action]
     OpenWaypoint -->|User engages| ActionHandler
+    
+    AppRef[App State Ref - updated every render] -.->|syncAppState| VariableResolver
 ```
 
 ---
 
 ## 9. Key Design Decisions
 
-### Decision 1: Event Bus vs Direct Calls
-**Chosen: Direct function calls with a central hook**
-- Simpler than a full event bus
-- The `useNovaInteractions` hook wraps all app state and provides a `fireEvent(type, payload)` method
-- Components call `fireEvent` directly when actions occur
-- No need for a global event system
+### Decision 1: Zustand Store vs Props for the Engine
+**Chosen: Zustand store with a thin React hook wrapper**
+
+- **Why not props?** Passing callbacks and data as hook dependencies causes referential instability. Every render creates new function references for inline callbacks, and arrays from state (`projects`, `onwardItems`) are new references every render. This causes `useEffect` cleanup/re-run loops that break timers, cooldowns, and event listeners.
+- **Why Zustand?** Store actions are created once and never change reference. `store.getState()` reads the latest data without needing it as a dependency. This makes timers, intervals, and event listeners stable.
+- **The hook wrapper** (`useNovaInteractions`) provides a `syncAppState` function that uses a `useRef` to hold the latest app state without triggering re-renders.
 
 ### Decision 2: Template Variables vs Full AI Generation
 **Chosen: Template variables with optional AI enhancement**
@@ -322,6 +410,14 @@ flowchart TD
 - Category: max 1 per 5min per category
 - Session: don't repeat same pattern twice
 
+### Decision 5: Ref Pattern for Timers and Intervals
+**Chosen: Empty dependency array + `store.getState()` for all timers**
+
+- Timers (idle detection, cooldown checks) use `useEffect` with `[]` deps
+- Inside the timer callback, use `useNovaInteractionStore.getState()` to read the latest state
+- This avoids the "timer never fires" bug where `useEffect` cleanup re-runs on every render because a dependency changed reference
+- The `syncAppState` pattern (via `useRef`) is used for data that the store needs but doesn't own (e.g., `projects`, `onwardItems`)
+
 ---
 
 ## 10. Risks & Mitigations
@@ -333,15 +429,18 @@ flowchart TD
 | Too many patterns to maintain | Start with 8-10 core patterns, add more based on usage |
 | AI-enhanced patterns are slow | Only use AI for high-priority patterns; templates for everything else |
 | User feels monitored | All interactions are local; no data leaves the app; transparent about triggers |
+| **Referential instability breaks timers/cooldowns** | **Use Zustand store for stable action references; useRef for app state; empty dep arrays for timers** |
 
 ---
 
 ## 11. Next Steps
 
-1. Implement [`src/hooks/useNovaInteractions.js`](src/hooks/useNovaInteractions.js) — the core engine
-2. Create [`src/constants/novaInteractions.js`](src/constants/novaInteractions.js) — pattern definitions (start with 8-10)
-3. Create [`src/components/nova/NovaToast.jsx`](src/components/nova/NovaToast.jsx) — toast UI
-4. Integrate `fireEvent` calls into [`src/App.jsx`](src/App.jsx) and other components
-5. Wire up the hook in [`src/App.jsx`](src/App.jsx) and pass to relevant components
-6. Test with real usage patterns
-7. Iterate on patterns based on feedback
+1. Install Zustand: `npm install zustand`
+2. Create [`src/store/novaInteractionStore.js`](src/store/novaInteractionStore.js) — the Zustand store with `fireEvent`, cooldown management, queue
+3. Create [`src/hooks/useNovaInteractions.js`](src/hooks/useNovaInteractions.js) — the React hook wrapper with `syncAppState` ref pattern
+4. Create [`src/constants/novaInteractions.js`](src/constants/novaInteractions.js) — pattern definitions (start with 8-10)
+5. Create [`src/components/nova/NovaToast.jsx`](src/components/nova/NovaToast.jsx) — toast UI
+6. Integrate `fireEvent` calls into [`src/App.jsx`](src/App.jsx) and other components
+7. Wire up the hook in [`src/App.jsx`](src/App.jsx) and pass to relevant components
+8. Test with real usage patterns
+9. Iterate on patterns based on feedback

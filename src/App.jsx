@@ -1,6 +1,4 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import meridianLogo from './assets/meridian_full_logo.png';
-
 import { T, NODE_PALETTE } from './utils/theme.js';
 import { askAI } from './utils/api.js';
 import { uid, projectPos, progress, DEFAULT_SKILLS, parseDeferClue } from './utils/helpers.js';
@@ -38,6 +36,10 @@ import { drawOnwardPage, drawMapPage, drawPathsPage, drawSkillsPage, drawConstel
 import useTracking from './hooks/useTracking.js';
 import useLocalStorageSync from './hooks/useLocalStorageSync.js';
 import { useOnwardScroll } from './hooks/useOnwardScroll.js';
+import { useNovaInteractions } from './hooks/useNovaInteractions.js';
+import { registerPatterns, useNovaInteractionStore } from './store/novaInteractionStore.js';
+import { PATTERNS } from './constants/novaInteractions.js';
+import NovaToast from './components/nova/NovaToast.jsx';
 
     function Meridian() {
       const [projects, setProjects]     = useState(() => { try { const s = localStorage.getItem('meridian_projects_v2'); return s ? JSON.parse(s) : []; } catch { return []; } });
@@ -178,6 +180,14 @@ import { useOnwardScroll } from './hooks/useOnwardScroll.js';
         novaRetry,
       } = useNOVA({ apiKey, projects, focus, waypointContext, loaded });
 
+      // ── NOVA Active Interactions ──
+      const novaInteractions = useNovaInteractions();
+
+      // Register interaction patterns once on mount
+      useEffect(() => {
+        registerPatterns(PATTERNS);
+      }, []);
+
       const [renamingGoalId, setRenamingGoalId] = useState(null);
       const [renameValue, setRenameValue] = useState('');
       // Deadline notifier
@@ -313,6 +323,11 @@ import { useOnwardScroll } from './hooks/useOnwardScroll.js';
           if (key) setApiKey(key);
           setLoaded(true);
           
+          // Fire app_opened event for NOVA interactions
+          setTimeout(() => {
+            useNovaInteractionStore.getState().fireEvent('app_opened', {});
+          }, 1000);
+
           // Calculate deadline alerts after loading
           setTimeout(() => {
             const alerts = calculateDeadlineAlerts(projects);
@@ -414,6 +429,22 @@ import { useOnwardScroll } from './hooks/useOnwardScroll.js';
       // Scroll to current time + resize canvas when waypoint opens (extracted hook)
       useOnwardScroll(activePage, canvasRef, resizeRef);
 
+      // ── Sync app state into NOVA interaction store ──
+      // Called on every render to keep the store's appState ref current.
+      // This is safe because syncAppState uses useRef internally.
+      novaInteractions.syncAppState({
+        currentStreak: streakDays,
+        todayCompletedCount: onwardItems.filter(it => it.done && it.date === new Date().toDateString()).length,
+        activePage,
+        waypointContext,
+        knowledgePool,
+        confidence: computePlanningConfidence(knowledgePool?.syncEvents || []),
+        projects,
+        onwardItems,
+        sessions,
+        deferredItems: deferredItems.length,
+        backlogItems: backlogItems.length,
+      });
 
       // ── Canvas draw loop ──────────────────────────────────────
       useEffect(() => {
@@ -592,6 +623,13 @@ import { useOnwardScroll } from './hooks/useOnwardScroll.js';
         };
         setProjects(prev => [...prev, newProject]);
         setSelectedId(id);
+        // Fire NOVA interaction event
+        novaInteractions.fireEvent('goal_created', {
+          id: newProject.id,
+          title: newProject.title,
+          deadline: newProject.deadline,
+          subtaskCount: (goalData.subtasks || []).length,
+        });
         if (goalData.subtasks?.length || goalData.checkpoints?.length) {
           setAiMsg(`✦ ${(goalData.subtasks?.length || 0) + (goalData.checkpoints?.length || 0)} items generated for "${newProject.title}"`);
         }
@@ -675,12 +713,22 @@ import { useOnwardScroll } from './hooks/useOnwardScroll.js';
       // ── New Ingestion & Smart Sorting handlers ──
       const handleFocusSessionComplete = (session) => {
         setSessions(prev => [...prev, session]);
+        // Fire NOVA interaction event
+        novaInteractions.fireEvent('session_completed', {
+          label: session.label,
+          goalId: session.goalId,
+          duration: session.duration,
+        });
         // Check if task overran estimate → fire journal prompt
         const onwardItem = onwardItems.find(it => it.id === session.goalId || it.title === session.label);
         if (onwardItem && onwardItem.duration) {
           const estimated = onwardItem.duration;
           if (session.duration > estimated * 1.2) {
-            // Will be handled by FocusScreen's journal prompt
+            novaInteractions.fireEvent('session_overran', {
+              label: session.label,
+              estimated,
+              actual: session.duration,
+            });
           }
         }
       };
@@ -770,7 +818,15 @@ import { useOnwardScroll } from './hooks/useOnwardScroll.js';
           addSyncEvent('task_completed', item.title);
         }
         setOnwardItems(prev => prev.map(it => it.id === id ? { ...it, done: !it.done } : it));
-        if (item && !item.done) setShowMindCheckCard(true);
+        // Fire NOVA interaction event for task completion
+        if (item && !item.done) {
+          novaInteractions.fireEvent('task_completed', {
+            id: item.id,
+            title: item.title,
+            goalId: item.goalId,
+          });
+          setShowMindCheckCard(true);
+        }
         const remainingNovaItems = onwardItems.filter(it => it.novaTaskId && !it.done && it.id !== id).length;
         if (novaState.dailyPlan && remainingNovaItems < 5 && !novaState.planGenLoading) {
           generateNovaPlan();
@@ -1289,9 +1345,6 @@ import { useOnwardScroll } from './hooks/useOnwardScroll.js';
 
             /* ── SIGNAL ── */
             .sig{width:180px;flex-shrink:0;background:${T.surface};border-right:1px solid ${T.border};display:flex;flex-direction:column;overflow:hidden;}
-            .sig-logo{padding:14px 13px 11px;border-bottom:1px solid ${T.border};}
-            .sig-brand{font-size:15px;font-weight:700;color:${T.accent};letter-spacing:.14em;}
-            .sig-subt{font-size:7px;color:${T.muted};letter-spacing:.18em;text-transform:uppercase;margin-top:3px;}
             .sec{padding:10px 11px 6px;}
             .secl{font-size:7.5px;color:${T.muted};text-transform:uppercase;letter-spacing:.12em;display:flex;align-items:center;gap:5px;margin-bottom:8px;}
             .pip{width:5px;height:5px;border-radius:50%;flex-shrink:0;}
@@ -1443,7 +1496,6 @@ import { useOnwardScroll } from './hooks/useOnwardScroll.js';
 
             /* Base sizes (1440px - 1919px) - default zoomed in */
             .sig{width:253px;}
-            .sig-logo{padding:18px 16px 14px;}
             .sec{padding:14px 14px 10px;}
             .sig-add{margin:6px 14px 10px;padding:9px;}
             .nb{padding:12px 3px;}
@@ -1470,7 +1522,6 @@ import { useOnwardScroll } from './hooks/useOnwardScroll.js';
               .sig{width:230px;}
               .wp.open{width:299px;}
               .wpi{width:299px;}
-              .sig-logo{padding:16px 14px 12px;}
               .sec{padding:12px 12px 8px;}
               .sig-add{margin:5px 12px 8px;padding:8px;}
               .nb{padding:10px 2px;}
@@ -1493,7 +1544,6 @@ import { useOnwardScroll } from './hooks/useOnwardScroll.js';
               .sig{width:207px;}
               .wp.open{width:276px;}
               .wpi{width:276px;}
-              .sig-logo{padding:14px 12px 10px;}
               .sec{padding:10px 10px 6px;}
               .sig-add{margin:4px 10px 6px;padding:7px;}
               .nb{padding:8px 2px;}
@@ -1517,7 +1567,6 @@ import { useOnwardScroll } from './hooks/useOnwardScroll.js';
               .sig{width:299px;}
               .wp.open{width:391px;}
               .wpi{width:391px;}
-              .sig-logo{padding:22px 20px 18px;}
               .sec{padding:18px 18px 12px;}
               .sig-add{margin:8px 18px 12px;padding:11px;}
               .nb{padding:14px 4px;}
@@ -1550,7 +1599,6 @@ import { useOnwardScroll } from './hooks/useOnwardScroll.js';
               .sig{width:368px;}
               .wp.open{width:460px;}
               .wpi{width:460px;}
-              .sig-logo{padding:28px 24px 22px;}
               .sec{padding:22px 22px 16px;}
               .sig-add{margin:10px 22px 16px;padding:13px;}
               .nb{padding:18px 6px;}
@@ -1586,7 +1634,6 @@ import { useOnwardScroll } from './hooks/useOnwardScroll.js';
               .sig{width:184px;}
               .wp.open{width:253px;}
               .wpi{width:253px;}
-              .sig-logo{padding:12px 10px 9px;}
               .sec{padding:8px 9px 5px;}
               .nb{padding:8px 1px;}
               .ni{width:24px;height:24px;}
@@ -1598,25 +1645,6 @@ import { useOnwardScroll } from './hooks/useOnwardScroll.js';
           <div className="app-shell">
             {/* ═══ SIGNAL ═══ */}
             <div className="sig">
-              {/* Logo block */}
-              <div className="sig-logo">
-                <img src={meridianLogo} alt="MERIDIAN" style={{ width:130, display:'block' }} />
-                <div className="sig-subt">Navigate Your Growth</div>
-                {(() => {
-                  const streak = calcStreak();
-                  if (!streak) return null;
-                  const color = streak >= 14 ? T.rose : streak >= 7 ? T.accent : T.green;
-                  return (
-                    <div style={{ marginTop:6, display:'flex', alignItems:'center', gap:5 }}>
-                      <span style={{ fontSize:10 }}>{streak >= 7 ? '🔥' : '✦'}</span>
-                      <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color, fontWeight:600 }}>
-                        {streak} day streak
-                      </span>
-                    </div>
-                  );
-                })()}
-              </div>
-
               <NovaSidebarBlock
                 novaState={novaState}
                 waypointOpen={waypointOpen}
@@ -1671,6 +1699,7 @@ import { useOnwardScroll } from './hooks/useOnwardScroll.js';
                       onClick={() => {
                         setActivePage(page);
                         activePageRef.current = page;
+                        novaInteractions.fireEvent('page_navigated', { page });
                         if (page !== 'constellation' && page !== 'worklogs') openWaypoint({ type: 'canvas-panel', id: page });
                         else closeWaypoint();
                       }}
@@ -1988,6 +2017,44 @@ import { useOnwardScroll } from './hooks/useOnwardScroll.js';
               brainDumpEntries={brainDumpEntries}
               projects={projects}
             />
+          )}
+
+          {/* ── NOVA Toast Container ── */}
+          {novaInteractions.toastQueue.length > 0 && (
+            <div
+              style={{
+                position: 'fixed',
+                bottom: 20,
+                right: 20,
+                zIndex: 9999,
+                display: 'flex',
+                flexDirection: 'column-reverse',
+                pointerEvents: 'none',
+              }}
+            >
+              {novaInteractions.toastQueue.map((toast) => (
+                <div key={toast.id} style={{ pointerEvents: 'auto' }}>
+                  <NovaToast
+                    toast={toast}
+                    onDismiss={novaInteractions.dismissToast}
+                    onAction={(action) => {
+                      if (action.type === 'open_program') {
+                        openWaypoint({ type: 'program', id: action.payload.programId });
+                      } else if (action.type === 'open_insights') {
+                        openWaypoint({ type: 'nova-insights', id: null });
+                      } else if (action.type === 'open_waypoint') {
+                        // Open the currently selected goal or the first project
+                        const targetId = selectedId || projects[0]?.id;
+                        if (targetId) openWaypoint({ type: 'goal', id: targetId });
+                      } else if (action.type === 'start_first_task') {
+                        // Navigate to onward panel to start the first accepted task
+                        setActivePage('onward');
+                      }
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
           )}
         </>
       );

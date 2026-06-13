@@ -1,6 +1,7 @@
 import React from 'react';
 import { T } from '../../utils/theme.js';
 import { computePlanningConfidence } from '../../utils/nova.js';
+import { updatePlanAccuracyHistory } from '../../utils/nova.js';
 
 const evtLabel = { task_accepted:'Accepted', task_rejected:'Rejected', task_completed:'Completed', briefing_done:'Briefing', program_opened:'Opened' };
 const evtColor = { task_accepted: T.green, task_rejected: T.rose, task_completed: T.accent, briefing_done: T.blue, program_opened: T.muted };
@@ -14,7 +15,8 @@ const relTime = (ts) => {
 };
 
 export default function NovaInsightsPanel({
-  novaState, apiKey, closeWaypoint, generateNovaPlan, calcStreak, getWeeklyData,
+  novaState, apiKey, onBack, generateNovaPlan, calcStreak, getWeeklyData,
+  recordPlanAccuracy,
 }) {
   const confidence = computePlanningConfidence(novaState.syncEvents);
   const confidenceColor = confidence >= 70 ? T.green : confidence >= 40 ? T.accent : T.muted;
@@ -36,13 +38,24 @@ export default function NovaInsightsPanel({
   const planItems = (plan?.date === today && plan?.items) ? plan.items : [];
   const recentEvents = [...evts].reverse().slice(0, 12);
 
+  // ── Plan Accuracy ──
+  const planAccuracy = novaState.planAccuracy;
+  const accuracyHistory = planAccuracy?.history || [];
+  const movingAvg = planAccuracy?.movingAverage;
+  const accuracyColor = movingAvg >= 70 ? T.green : movingAvg >= 40 ? T.accent : T.muted;
+
   return (
-    <>
-      <div className="wp-accent" style={{ background: T.accent }} />
-      <div className="wp-hd">
-        <button className="wp-close" onClick={closeWaypoint}>×</button>
-        <div className="wp-badge"><span style={{ color:T.muted }}>Nova</span></div>
-        <div className="wp-ttl" style={{ color:T.accent }}>PRODUCTIVITY INSIGHTS</div>
+    <div style={{ display:'flex', flexDirection:'column', height:'100%', overflow:'hidden' }}>
+      {/* Full-page header with back button */}
+      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'14px 18px', borderBottom:`1px solid ${T.border}`, flexShrink:0 }}>
+        <button
+          onClick={onBack}
+          style={{ background:'none', border:`1px solid ${T.border}`, borderRadius:6, color:T.text, cursor:'pointer', fontSize:14, padding:'2px 10px', fontFamily:"'IBM Plex Mono',monospace", lineHeight:1.6 }}
+        >← Back</button>
+        <div>
+          <div className="wp-badge"><span style={{ color:T.muted }}>Nova</span></div>
+          <div className="wp-ttl" style={{ color:T.accent }}>PRODUCTIVITY INSIGHTS</div>
+        </div>
       </div>
       <div style={{ flex:1, overflowY:'auto', padding:'16px 18px', display:'flex', flexDirection:'column', gap:18 }}>
 
@@ -103,6 +116,54 @@ export default function NovaInsightsPanel({
           </div>
         </div>
 
+        {/* Plan Accuracy */}
+        <div>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+            <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:T.muted, letterSpacing:'.1em' }}>PLAN ACCURACY</div>
+            <button
+              onClick={() => recordPlanAccuracy && recordPlanAccuracy()}
+              style={{
+                background:'none', border:`1px solid ${T.border}`, borderRadius:4,
+                color: T.accent, cursor:'pointer', fontSize:8,
+                padding:'2px 6px', fontFamily:"'IBM Plex Mono',monospace",
+              }}
+            >RECORD</button>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+            <div style={{ fontFamily:"'Syne',sans-serif", fontSize:24, fontWeight:800, color:accuracyColor, lineHeight:1 }}>
+              {movingAvg !== null && movingAvg !== undefined ? `${Math.round(movingAvg)}%` : '—'}
+            </div>
+            <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:T.muted, lineHeight:1.4 }}>
+              {movingAvg >= 70 ? 'NOVA plans are on target' :
+               movingAvg >= 40 ? 'NOVA is learning your patterns' :
+               movingAvg !== null ? 'NOVA needs more data' :
+               'No accuracy data yet'}
+            </div>
+          </div>
+          {accuracyHistory.length > 0 && (
+            <div style={{ display:'flex', alignItems:'flex-end', gap:3, height:28, marginTop:4 }}>
+              {accuracyHistory.slice(-14).map((entry, i) => {
+                const pct = Math.min(entry.accuracy || 0, 100);
+                const isRecent = i === accuracyHistory.slice(-14).length - 1;
+                return (
+                  <div key={i} style={{
+                    flex:1, height:`${Math.max(pct / 100 * 24, 2)}px`,
+                    background: isRecent ? accuracyColor : `${accuracyColor}60`,
+                    borderRadius:2, transition:'height .3s',
+                    position:'relative',
+                    title: `${entry.date || ''}: ${Math.round(pct)}%`,
+                  }} />
+                );
+              })}
+            </div>
+          )}
+          {accuracyHistory.length > 0 && (
+            <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:7, color:T.muted, marginTop:4 }}>
+              Last {Math.min(accuracyHistory.length, 14)} days · {accuracyHistory.length} total records
+            </div>
+          )}
+        </div>
+
         {/* Today's plan */}
         {planItems.length > 0 && (
           <div>
@@ -142,6 +203,6 @@ export default function NovaInsightsPanel({
         )}
 
       </div>
-    </>
+    </div>
   );
 }

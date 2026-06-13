@@ -55,7 +55,7 @@ const PROGRAMS = [
   },
 ];
 
-export default function ProgramsList({ waypointOpen, waypointContext, openWaypoint, closeWaypoint, addSyncEvent }) {
+export default function ProgramsList({ mainPage, onOpenProgram, onBackToHQ, addSyncEvent }) {
   return (
     <div className="sec" style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column', gap:6 }}>
       <div className="secl">
@@ -63,14 +63,14 @@ export default function ProgramsList({ waypointOpen, waypointContext, openWaypoi
         PROGRAMS
       </div>
       {PROGRAMS.map(prog => {
-        const isActive = waypointOpen && waypointContext?.type === 'program' && waypointContext?.id === prog.id;
+        const isActive = mainPage === `program-${prog.id}`;
         return (
           <div
             key={prog.id}
             onClick={() => {
-              if (isActive) { closeWaypoint(); }
+              if (isActive) { onBackToHQ(); }
               else {
-                openWaypoint({ type: 'program', id: prog.id });
+                onOpenProgram(prog.id);
                 addSyncEvent('program_opened', prog.id);
               }
             }}

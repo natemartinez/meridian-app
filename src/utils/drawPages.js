@@ -903,7 +903,7 @@ export function drawSkillsPage(ctx, dpr, w, h, t, refs) {
   skillsHitAreasRef.current = hitAreas;
 }
 
-// ── Constellation page (solar system) ────────────────────────────────────
+// ── Goals page ───────────────────────────────────────────────────────────
 export function drawConstellationPage(ctx, dpr, w, h, t, refs) {
   const { projectsRef, selectedIdRef, sunIdRef, panRef, draggingRef, solarHitAreasRef, solarSunPosRef } = refs;
   const hitAreas = [];
@@ -918,7 +918,7 @@ export function drawConstellationPage(ctx, dpr, w, h, t, refs) {
   ctx.fillStyle = T.accent;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-  ctx.fillText('CONSTELLATION', 24*dpr, 10*dpr);
+  ctx.fillText('GOALS', 24*dpr, 10*dpr);
   ctx.restore();
 
   if (!projs.length) {

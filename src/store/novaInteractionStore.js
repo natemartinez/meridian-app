@@ -43,6 +43,18 @@ export const useNovaInteractionStore = create((set, get) => ({
    * Called by App.jsx on every render via the hook's syncAppState.
    */
   syncAppState: (appState) => {
+    // Skip update if appState hasn't changed (shallow comparison of keys)
+    // This prevents unnecessary set() calls that trigger subscriber notifications
+    // and contribute to re-render cascades.
+    const current = get().appState;
+    if (current === appState) return;
+    // Shallow compare known keys to detect meaningful changes
+    const keys = ['currentStreak', 'todayCompletedCount', 'activePage', 'waypointContext', 'confidence', 'projects'];
+    let changed = false;
+    for (const k of keys) {
+      if (current[k] !== appState[k]) { changed = true; break; }
+    }
+    if (!changed && Object.keys(current).length > 0) return;
     set({ appState });
   },
 

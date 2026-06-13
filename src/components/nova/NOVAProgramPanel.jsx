@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import RegroupPanel from './RegroupPanel.jsx';
 import RetryFeedback from './RetryFeedback.jsx';
 import { parseDeferClue } from '../../utils/helpers.js';
@@ -6,7 +6,7 @@ import { useNovaInteractionStore } from '../../store/novaInteractionStore.js';
 
 function NOVAProgramPanel({
   progId, novaState, setNovaState, novaChatInput, setNovaChatInput, novaLoading,
-  sendNOVAMessage, addSyncEvent, setOnwardItems, uid, closeWaypoint, T,
+  sendNOVAMessage, addSyncEvent, setOnwardItems, uid, onBack, T,
   onNewSession, buildNOVASystemPrompt,
   // New props for Briefing enhancement
   onwardItems, projects, selectedForToday, setSelectedForToday,
@@ -16,6 +16,8 @@ function NOVAProgramPanel({
   sessions, brainDumpEntries, onBrainDump, journalEntries, onJournalEntry,
   onBreakdownSuggestion,
   novaRetry,
+  confirmInsight,
+  dismissInsight,
 }) {
   const [showContext, setShowContext] = useState(false);
   const [briefingPhase, setBriefingPhase] = useState('chat'); // 'chat' | 'pick3' | 'breakdown' | 'done'
@@ -45,7 +47,9 @@ function NOVAProgramPanel({
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendNOVAMessage(progId); }
   };
 
-  const contextContent = buildNOVASystemPrompt ? buildNOVASystemPrompt(progId) : '';
+  const contextContent = useMemo(() => {
+    return buildNOVASystemPrompt ? buildNOVASystemPrompt(progId) : '';
+  }, [buildNOVASystemPrompt, progId]);
 
   // ── Rule of 3: Pick 3 objectives ──
   const today = new Date().toDateString();
@@ -149,31 +153,44 @@ function NOVAProgramPanel({
     });
   };
 
+  // ── Pending Insights ──
+  const pendingInsights = novaState.pendingInsights || [];
+  const hasPendingInsights = pendingInsights.length > 0;
+
+  // ── Validation Warning ──
+  const lastValidation = novaState.lastValidation;
+  const showValidationWarning = lastValidation && !lastValidation.valid;
+
   // ── Render ──
   return (
-    <>
-      <div className="wp-accent" style={{ background: meta.color }} />
-      <div className="wp-hd">
-        <button className="wp-close" onClick={closeWaypoint}>×</button>
-        <div className="wp-badge">
-          <span style={{ width:5, height:5, borderRadius:'50%', background:meta.color, display:'inline-block' }} />
-          <span style={{ color:meta.color }}>NOVA</span>
-        </div>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          <div className="wp-ttl" style={{ color:meta.color }}>{meta.label}</div>
-          <div style={{ display:'flex', gap:4 }}>
-            <button
-              onClick={() => setShowContext(s => !s)}
-              style={{ background:'none', border:`1px solid ${T.border}`, borderRadius:4, color: showContext ? meta.color : T.muted, cursor:'pointer', fontSize:9, padding:'2px 6px', fontFamily:"'IBM Plex Mono',monospace", letterSpacing:'.05em' }}
-              title="Toggle system prompt debug view"
-            >{showContext ? 'HIDE CTX' : 'SHOW CTX'}</button>
-            <button
-              onClick={() => onNewSession(progId)}
-              style={{ background:'none', border:`1px solid ${T.border}`, borderRadius:4, color:T.muted, cursor:'pointer', fontSize:9, padding:'2px 6px', fontFamily:"'IBM Plex Mono',monospace", letterSpacing:'.05em' }}
-            >NEW SESSION</button>
+    <div style={{ display:'flex', flexDirection:'column', height:'100%', overflow:'hidden' }}>
+      {/* Full-page header with back button */}
+      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'14px 18px', borderBottom:`1px solid ${T.border}`, flexShrink:0 }}>
+        <button
+          onClick={onBack}
+          style={{ background:'none', border:`1px solid ${T.border}`, borderRadius:6, color:T.text, cursor:'pointer', fontSize:14, padding:'2px 10px', fontFamily:"'IBM Plex Mono',monospace", lineHeight:1.6 }}
+        >← Back</button>
+        <div style={{ flex:1 }}>
+          <div className="wp-badge">
+            <span style={{ width:5, height:5, borderRadius:'50%', background:meta.color, display:'inline-block' }} />
+            <span style={{ color:meta.color }}>NOVA</span>
           </div>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <div className="wp-ttl" style={{ color:meta.color }}>{meta.label}</div>
+            <div style={{ display:'flex', gap:4 }}>
+              <button
+                onClick={() => setShowContext(s => !s)}
+                style={{ background:'none', border:`1px solid ${T.border}`, borderRadius:4, color: showContext ? meta.color : T.muted, cursor:'pointer', fontSize:9, padding:'2px 6px', fontFamily:"'IBM Plex Mono',monospace", letterSpacing:'.05em' }}
+                title="Toggle system prompt debug view"
+              >{showContext ? 'HIDE CTX' : 'SHOW CTX'}</button>
+              <button
+                onClick={() => onNewSession(progId)}
+                style={{ background:'none', border:`1px solid ${T.border}`, borderRadius:4, color:T.muted, cursor:'pointer', fontSize:9, padding:'2px 6px', fontFamily:"'IBM Plex Mono',monospace", letterSpacing:'.05em' }}
+              >NEW SESSION</button>
+            </div>
+          </div>
+          <div className="wp-dsc">{meta.desc}</div>
         </div>
-        <div className="wp-dsc">{meta.desc}</div>
       </div>
 
       {showContext && (
@@ -441,7 +458,7 @@ function NOVAProgramPanel({
             Non-selected tasks moved to backlog.
           </div>
           <button
-            onClick={closeWaypoint}
+            onClick={onBack}
             style={{
               padding: '10px 28px',
               borderRadius: 6,
@@ -517,6 +534,76 @@ function NOVAProgramPanel({
         </div>
       )}
       
+      {/* ── Validation Warning ── */}
+      {showValidationWarning && (
+        <div style={{ padding:'4px 12px', flexShrink:0 }}>
+          <div style={{
+            padding:'6px 10px', borderRadius:4,
+            background: `${T.rose}15`,
+            border: `1px solid ${T.rose}40`,
+            fontFamily:"'IBM Plex Mono',monospace",
+            fontSize:8, color: T.rose,
+            display:'flex', alignItems:'center', gap:6,
+          }}>
+            <span>⚠</span>
+            <span>NOVA response may need review: {lastValidation.reason}</span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Pending Insights Confirmation ── */}
+      {hasPendingInsights && (
+        <div style={{ padding:'4px 12px', borderTop:`1px solid ${T.border}`, flexShrink:0 }}>
+          <div style={{
+            fontFamily:"'IBM Plex Mono',monospace",
+            fontSize:8, color: T.accent,
+            letterSpacing:'.08em', marginBottom:4,
+          }}>PENDING INSIGHTS ({pendingInsights.length})</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+            {pendingInsights.map(insight => (
+              <div key={insight.id} style={{
+                display:'flex', alignItems:'center', gap:6,
+                padding:'5px 8px',
+                background: T.card,
+                border:`1px solid ${T.border}`,
+                borderRadius:4,
+              }}>
+                <span style={{
+                  flex:1,
+                  fontFamily:"'IBM Plex Mono',monospace",
+                  fontSize:9, color: T.text,
+                  lineHeight:1.4,
+                }}>{insight.text || insight.label || insight.content}</span>
+                <button
+                  onClick={() => confirmInsight && confirmInsight(insight.id)}
+                  title="Accept insight"
+                  style={{
+                    background:`${T.green}20`,
+                    border:`1px solid ${T.green}50`,
+                    borderRadius:3, color: T.green,
+                    cursor:'pointer', fontSize:10,
+                    padding:'1px 6px', lineHeight:1.4,
+                    fontFamily:"'IBM Plex Mono',monospace",
+                  }}
+                >✓</button>
+                <button
+                  onClick={() => dismissInsight && dismissInsight(insight.id)}
+                  title="Dismiss insight"
+                  style={{
+                    background:'none',
+                    border:`1px solid ${T.border}`,
+                    borderRadius:3, color: T.muted,
+                    cursor:'pointer', fontSize:10,
+                    padding:'1px 6px', lineHeight:1.4,
+                    fontFamily:"'IBM Plex Mono',monospace",
+                  }}
+                >×</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Inline error toast for Briefing/Preview (outside scrollable area so always visible) ── */}
       {(isBriefing || isPreview) && (novaRetry?.error || novaRetry?.cooldownActive) && (
         <div style={{ padding:'0 12px', flexShrink:0 }}>
@@ -602,7 +689,7 @@ function NOVAProgramPanel({
           >Ready — Pick 3 Objectives →</button>
         </div>
       )}
-    </>
+    </div>
   );
 }
 

@@ -1,10 +1,15 @@
+/**
+ * Build a prose-formatted knowledge block for stronger models.
+ * Returns { text: string, usedEntryIds: string[] }
+ */
 export function buildFullKnowledgeBlock(pool) {
-  if (!pool) return '';
+  if (!pool) return { text: '', usedEntryIds: [] };
   const { entries = [], corrections = '' } = pool;
   const CONF_THRESHOLD = 0.5;
   const CAT_LABELS = { work: 'Work Style', goals: 'Goals & Motivation', prefs: 'Preferences', context: 'Personal Context' };
   const qualifying = entries.filter(e => e.source === 'manual' || e.conf >= CONF_THRESHOLD);
-  if (qualifying.length === 0 && !corrections.trim()) return '';
+  const usedEntryIds = qualifying.map(e => e.id);
+  if (qualifying.length === 0 && !corrections.trim()) return { text: '', usedEntryIds };
   const lines = ['--- Nova Knowledge Pool ---'];
   if (corrections.trim()) {
     lines.push('[USER CORRECTIONS]');
@@ -39,7 +44,7 @@ export function buildFullKnowledgeBlock(pool) {
   }
   lines.push('Treat manual entries as ground truth. Treat AI-inferred entries as probabilistic signals.');
   lines.push('---');
-  return '\n' + lines.join('\n');
+  return { text: '\n' + lines.join('\n'), usedEntryIds };
 }
 
 export function buildLightKnowledgeContext(pool) {
@@ -62,14 +67,16 @@ export function buildLightKnowledgeContext(pool) {
  * Build a structured bullet-point knowledge block optimized for weaker models.
  * Same data as buildFullKnowledgeBlock but formatted as simple bullet points
  * with clear labels, no decorative characters, and explicit instructions.
+ * Returns { text: string, usedEntryIds: string[] }
  */
 export function buildStructuredKnowledgeBlock(pool) {
-  if (!pool) return '';
+  if (!pool) return { text: '', usedEntryIds: [] };
   const { entries = [], corrections = '' } = pool;
   const CONF_THRESHOLD = 0.5;
   const CAT_LABELS = { work: 'WORK STYLE', goals: 'GOALS', prefs: 'PREFERENCES', context: 'CONTEXT' };
   const qualifying = entries.filter(e => e.source === 'manual' || e.conf >= CONF_THRESHOLD);
-  if (qualifying.length === 0 && !corrections.trim()) return '';
+  const usedEntryIds = qualifying.map(e => e.id);
+  if (qualifying.length === 0 && !corrections.trim()) return { text: '', usedEntryIds };
   const lines = ['[KNOWLEDGE POOL]'];
   if (corrections.trim()) {
     lines.push('User corrections: ' + corrections.trim());
@@ -96,5 +103,49 @@ export function buildStructuredKnowledgeBlock(pool) {
   }
   lines.push('Manual entries are ground truth. AI entries are probabilistic signals.');
   lines.push('[/KNOWLEDGE POOL]');
-  return '\n' + lines.join('\n');
+  return { text: '\n' + lines.join('\n'), usedEntryIds };
+}
+
+/**
+ * Decay AI-inferred knowledge entries based on time since last use.
+ * Manual entries are immune to decay.
+ * Entries below the pruning threshold are removed.
+ *
+ * @param {Object} pool - The knowledge pool { entries, corrections, lastUpdated }
+ * @returns {Object} Updated pool with decayed and pruned entries
+ */
+export function decayKnowledge(pool) {
+  if (!pool) return pool;
+  const now = Date.now();
+  const DAY_MS = 86400000;
+  return {
+    ...pool,
+    entries: pool.entries
+      .map(e => {
+        if (e.source === 'manual') return e; // manual entries don't decay
+        const daysSinceUse = e.lastUsed ? (now - e.lastUsed) / DAY_MS : 30;
+        const decayedConf = Math.max(0.1, e.conf - 0.05 * daysSinceUse);
+        return { ...e, conf: decayedConf };
+      })
+      .filter(e => e.source === 'manual' || e.conf >= 0.15), // prune low-confidence AI entries
+  };
+}
+
+/**
+ * Mark specific knowledge entries as used (update lastUsed timestamp).
+ * Called after building knowledge blocks to track which entries were included.
+ *
+ * @param {Object} pool - The knowledge pool
+ * @param {string[]} entryIds - Array of entry IDs that were used
+ * @returns {Object} Updated pool with lastUsed timestamps
+ */
+export function markEntriesUsed(pool, entryIds) {
+  if (!pool || !entryIds?.length) return pool;
+  const now = Date.now();
+  return {
+    ...pool,
+    entries: pool.entries.map(e =>
+      entryIds.includes(e.id) ? { ...e, lastUsed: now } : e
+    ),
+  };
 }

@@ -58,7 +58,7 @@ import NovaToast from './components/nova/NovaToast.jsx';
       const [addInput, setAddInput]     = useState('');
       const [confirmDelete, setConfirmDelete] = useState(null);
       // Compass/page state
-      const [activePage, setActivePage]           = useState('constellation');
+      const [activePage, setActivePage]           = useState('goals');
       const [onwardItems, setOnwardItems]         = useState(() => { try { const s = localStorage.getItem('meridian_onward_v2'); return s ? JSON.parse(s) : []; } catch { /* empty — invalid JSON */ return []; } });
       const [freeformTasks, setFreeformTasks]     = useState(() => { try { const s = localStorage.getItem('meridian_freeform_tasks'); return s ? JSON.parse(s) : []; } catch { /* empty — invalid JSON */ return []; } });
       const [skills, setSkills]                   = useState([]);
@@ -178,6 +178,9 @@ import NovaToast from './components/nova/NovaToast.jsx';
         buildNOVASystemPrompt,
         scanWeeklyGoals,
         novaRetry,
+        confirmInsight,
+        dismissInsight,
+        recordPlanAccuracy,
       } = useNOVA({ apiKey, projects, focus, waypointContext, loaded });
 
       // ── NOVA Active Interactions ──
@@ -264,7 +267,7 @@ import NovaToast from './components/nova/NovaToast.jsx';
       const resizeRef     = useRef(null);
       const roRef         = useRef(null);
       // Page refs
-      const activePageRef     = useRef('constellation');
+      const activePageRef     = useRef('goals');
       const onwardItemsRef    = useRef([]);
       const skillsRef         = useRef([]);
       const hoveredWeekRef    = useRef(null);
@@ -429,22 +432,36 @@ import NovaToast from './components/nova/NovaToast.jsx';
       // Scroll to current time + resize canvas when waypoint opens (extracted hook)
       useOnwardScroll(activePage, canvasRef, resizeRef);
 
-      // ── Sync app state into NOVA interaction store ──
-      // Called on every render to keep the store's appState ref current.
-      // This is safe because syncAppState uses useRef internally.
-      novaInteractions.syncAppState({
-        currentStreak: streakDays,
-        todayCompletedCount: onwardItems.filter(it => it.done && it.date === new Date().toDateString()).length,
+      // ── Sync app state into NOVA interaction store (after render) ──
+      // Must be in useEffect to avoid calling Zustand's set() during React's
+      // render phase, which causes "Cannot update during an existing state
+      // transition" errors in React 19.
+      useEffect(() => {
+        novaInteractions.syncAppState({
+          currentStreak: streakDays,
+          todayCompletedCount: onwardItems.filter(it => it.done && it.date === new Date().toDateString()).length,
+          activePage,
+          waypointContext,
+          knowledgePool,
+          confidence: computePlanningConfidence(knowledgePool?.syncEvents || []),
+          projects,
+          onwardItems,
+          sessions,
+          deferredItems: deferredItems.length,
+          backlogItems: backlogItems.length,
+        });
+      }, [
+        streakDays,
         activePage,
         waypointContext,
         knowledgePool,
-        confidence: computePlanningConfidence(knowledgePool?.syncEvents || []),
         projects,
         onwardItems,
         sessions,
-        deferredItems: deferredItems.length,
-        backlogItems: backlogItems.length,
-      });
+        deferredItems.length,
+        backlogItems.length,
+        computePlanningConfidence,
+      ]);
 
       // ── Canvas draw loop ──────────────────────────────────────
       useEffect(() => {
@@ -671,6 +688,21 @@ import NovaToast from './components/nova/NovaToast.jsx';
         setDragOverHour(null);
       };
       const deleteOnwardItem = (id) => setOnwardItems(prev => prev.filter(it => it.id !== id));
+      const deleteAvailableTask = (task) => {
+        if (task.type === 'subtask') {
+          setProjects(prev => prev.map(p => ({
+            ...p,
+            subtasks: p.subtasks?.filter(st => st.id !== task.id) || [],
+          })));
+        } else if (task.type === 'checkpoint') {
+          setProjects(prev => prev.map(p => ({
+            ...p,
+            checkpoints: p.checkpoints?.filter(cp => cp.id !== task.id) || [],
+          })));
+        } else if (task.type === 'freeform') {
+          setFreeformTasks(prev => prev.filter(ft => ft.id !== task.id));
+        }
+      };
       const returnOnwardItemToAvailable = (id) => {
         const item = onwardItems.find(it => it.id === id);
         if (!item) return;
@@ -977,7 +1009,6 @@ import NovaToast from './components/nova/NovaToast.jsx';
 
       // ── Canvas mouse handlers ─────────────────────────────────
       const onCanvasMouseDown = (e) => {
-        console.log(`[DEBUG_RESIZE] onCanvasMouseDown fired. page=${activePageRef.current} clientX=${e.clientX} clientY=${e.clientY} target=${e.target?.tagName}`);
         const canvas = canvasRef.current;
         if (!canvas) return;
         const rect = canvas.getBoundingClientRect();
@@ -1042,7 +1073,7 @@ import NovaToast from './components/nova/NovaToast.jsx';
           }
         }
 
-        if (activePageRef.current !== 'constellation') return;
+        if (activePageRef.current !== 'goals') return;
 
         const pan    = panRef.current;
         const projs  = projectsRef.current;
@@ -1119,7 +1150,7 @@ import NovaToast from './components/nova/NovaToast.jsx';
             return;
           }
         }
-        if (activePageRef.current !== 'constellation') return;
+        if (activePageRef.current !== 'goals') return;
 
         const d = draggingRef.current;
         if (!d) return;
@@ -1192,7 +1223,6 @@ import NovaToast from './components/nova/NovaToast.jsx';
         const d    = draggingRef.current;
         const md   = mouseDownPos.current;
         const wasClick = md && Math.hypot(e.clientX - md.clientX, e.clientY - md.clientY) < 5;
-        console.log(`[DEBUG_RESIZE] onCanvasMouseUp: page=${page} wasClick=${wasClick} resizeDrag=`, resizeDrag ? `itemId=${resizeDrag.itemId}` : 'null');
 
         // Clear resize drag state on mouse up — use ref, not state, since setResizeDrag is async
         if (resizeDragRef.current) {
@@ -1289,7 +1319,7 @@ import NovaToast from './components/nova/NovaToast.jsx';
           return;
         }
 
-        // Solar system / Constellation click logic
+        // Goals click logic
         if (wasClick) {
           const canvas = canvasRef.current;
           if (canvas) {
@@ -1647,20 +1677,14 @@ import NovaToast from './components/nova/NovaToast.jsx';
             <div className="sig">
               <NovaSidebarBlock
                 novaState={novaState}
-                waypointOpen={waypointOpen}
-                waypointContext={waypointContext}
-                prioritizeInput={prioritizeInput}
-                setPrioritizeInput={setPrioritizeInput}
-                generateNovaPlan={generateNovaPlan}
-                closeWaypoint={closeWaypoint}
-                openWaypoint={openWaypoint}
-                apiKey={apiKey}
+                mainPage={mainPage}
+                onOpenInsights={() => setMainPage('nova-insights')}
+                onBackToHQ={() => setMainPage('hq')}
               />
               <ProgramsList
-                waypointOpen={waypointOpen}
-                waypointContext={waypointContext}
-                openWaypoint={openWaypoint}
-                closeWaypoint={closeWaypoint}
+                mainPage={mainPage}
+                onOpenProgram={(id) => setMainPage(`program-${id}`)}
+                onBackToHQ={() => setMainPage('hq')}
                 addSyncEvent={addSyncEvent}
               />
               <BottomNav mainPage={mainPage} setMainPage={setMainPage} closeWaypoint={closeWaypoint} />
@@ -1672,13 +1696,13 @@ import NovaToast from './components/nova/NovaToast.jsx';
               <div className="ctb">
                 <div>
                   <div className="cttl">
-                    {mainPage === 'hq' ? (activePage === 'onward' ? 'ONWARD' : activePage === 'map' ? 'MAP' : activePage === 'paths' ? 'PATHS' : activePage === 'skills' ? 'SKILLS' : activePage === 'worklogs' ? 'WORK LOGS' : 'CONSTELLATION') : mainPage === 'tracking' ? 'TRACKING' : mainPage === 'settings' ? 'SETTINGS' : mainPage === 'knowledge-pool' ? 'KNOWLEDGE POOL' : 'MIND CHECK'}
+                    {mainPage === 'hq' ? (activePage === 'onward' ? 'ONWARD' : activePage === 'map' ? 'MAP' : activePage === 'paths' ? 'PATHS' : activePage === 'skills' ? 'SKILLS' : activePage === 'worklogs' ? 'WORK LOGS' : 'GOALS') : mainPage === 'tracking' ? 'TRACKING' : mainPage === 'settings' ? 'SETTINGS' : mainPage === 'knowledge-pool' ? 'KNOWLEDGE POOL' : mainPage === 'mindcheck' ? 'MIND CHECK' : mainPage === 'nova-insights' ? 'PRODUCTIVITY INSIGHTS' : mainPage === 'program-briefing' ? 'BRIEFING' : mainPage === 'program-focus' ? 'FOCUS' : mainPage === 'program-regroup' ? 'RE-GROUP' : mainPage === 'program-preview' ? 'PREVIEW' : 'MIND CHECK'}
                   </div>
                   <div className="cdt">
-                    {new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' })} · {mainPage === 'knowledge-pool' ? 'KNOWLEDGE POOL' : mainPage.toUpperCase()}
+                    {new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' })} · {mainPage === 'knowledge-pool' ? 'KNOWLEDGE POOL' : mainPage === 'nova-insights' ? 'PRODUCTIVITY INSIGHTS' : mainPage.startsWith('program-') ? mainPage.replace('program-', '').toUpperCase() : mainPage.toUpperCase()}
                   </div>
                 </div>
-                {mainPage === 'hq' && activePage === 'constellation' && (
+                {mainPage === 'hq' && activePage === 'goals' && (
                   <button className="cbtn" onClick={() => setModal(true)}>+ New Goal</button>
                 )}
               </div>
@@ -1687,7 +1711,7 @@ import NovaToast from './components/nova/NovaToast.jsx';
               {mainPage === 'hq' && (
                 <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 14px', borderBottom:`1px solid ${T.border}`, background:T.bg, flexShrink:0 }}>
                   {[
-                    { page:'constellation', label:'✦ Solar System' },
+                    { page:'goals', label:'✦ Goals' },
                     { page:'onward',        label:'ONWARD' },
                     { page:'map',           label:'MAP' },
                     { page:'paths',         label:'PATHS' },
@@ -1700,7 +1724,7 @@ import NovaToast from './components/nova/NovaToast.jsx';
                         setActivePage(page);
                         activePageRef.current = page;
                         novaInteractions.fireEvent('page_navigated', { page });
-                        if (page !== 'constellation' && page !== 'worklogs') openWaypoint({ type: 'canvas-panel', id: page });
+                        if (page !== 'goals' && page !== 'worklogs') openWaypoint({ type: 'canvas-panel', id: page });
                         else closeWaypoint();
                       }}
                       style={{
@@ -1724,7 +1748,7 @@ import NovaToast from './components/nova/NovaToast.jsx';
               {/* Body */}
               <div className="cbody">
                 {mainPage === 'hq' && (
-                  <div className="cv" style={{ cursor: activePage === 'constellation' ? (dragging ? 'grabbing' : 'grab') : activePage === 'onward' ? 'default' : 'pointer', position: 'relative', overflow: activePage === 'onward' ? 'auto' : 'hidden', width: (activePage === 'onward' && waypointOpen) ? 'calc(100% - 244px)' : '100%', transition: 'width 0.4s cubic-bezier(.4,0,.2,1)', scrollbarWidth: 'thin', scrollbarColor: `${T.border} ${T.bg}` }}>
+                  <div className="cv" style={{ cursor: activePage === 'goals' ? (dragging ? 'grabbing' : 'grab') : activePage === 'onward' ? 'default' : 'pointer', position: 'relative', overflow: activePage === 'onward' ? 'auto' : 'hidden', width: (activePage === 'onward' && waypointOpen) ? 'calc(100% - 244px)' : '100%', transition: 'width 0.4s cubic-bezier(.4,0,.2,1)', scrollbarWidth: 'thin', scrollbarColor: `${T.border} ${T.bg}` }}>
                     <canvas
                       ref={canvasRef}
                       style={{ position:'absolute', top:0, left:0 }}
@@ -1808,6 +1832,161 @@ import NovaToast from './components/nova/NovaToast.jsx';
                 {mainPage === 'mindcheck' && (
                   <MindCheckPage routines={routines} setRoutines={setRoutines} />
                 )}
+                {mainPage === 'nova-insights' && (
+                  <NovaInsightsPanel
+                    novaState={novaState}
+                    apiKey={apiKey}
+                    onBack={() => setMainPage('hq')}
+                    generateNovaPlan={generateNovaPlan}
+                    calcStreak={calcStreak}
+                    getWeeklyData={getWeeklyData}
+                    recordPlanAccuracy={recordPlanAccuracy}
+                  />
+                )}
+                {mainPage === 'program-briefing' && (
+                  <NOVAProgramPanel
+                    progId="briefing"
+                    novaState={novaState}
+                    setNovaState={setNovaState}
+                    novaChatInput={novaChatInput}
+                    setNovaChatInput={setNovaChatInput}
+                    novaLoading={novaLoading}
+                    sendNOVAMessage={sendNOVAMessage}
+                    addSyncEvent={addSyncEvent}
+                    setOnwardItems={setOnwardItems}
+                    uid={uid}
+                    onBack={() => setMainPage('hq')}
+                    T={T}
+                    onNewSession={onNewSession}
+                    buildNOVASystemPrompt={buildNOVASystemPrompt}
+                    onwardItems={onwardItems}
+                    projects={projects}
+                    selectedForToday={selectedForToday}
+                    setSelectedForToday={setSelectedForToday}
+                    deferredItems={deferredItems}
+                    setDeferredItems={setDeferredItems}
+                    backlogItems={backlogItems}
+                    setBacklogItems={setBacklogItems}
+                    onBreakdownTask={handleBreakdownTask}
+                    sessions={sessions}
+                    brainDumpEntries={brainDumpEntries}
+                    onBrainDump={handleBrainDump}
+                    journalEntries={journalEntries}
+                    onJournalEntry={handleJournalEntry}
+                    onBreakdownSuggestion={handleBreakdownSuggestion}
+                    novaRetry={novaRetry}
+                    confirmInsight={confirmInsight}
+                    dismissInsight={dismissInsight}
+                  />
+                )}
+                {mainPage === 'program-focus' && (
+                  <NOVAProgramPanel
+                    progId="focus"
+                    novaState={novaState}
+                    setNovaState={setNovaState}
+                    novaChatInput={novaChatInput}
+                    setNovaChatInput={setNovaChatInput}
+                    novaLoading={novaLoading}
+                    sendNOVAMessage={sendNOVAMessage}
+                    addSyncEvent={addSyncEvent}
+                    setOnwardItems={setOnwardItems}
+                    uid={uid}
+                    onBack={() => setMainPage('hq')}
+                    T={T}
+                    onNewSession={onNewSession}
+                    buildNOVASystemPrompt={buildNOVASystemPrompt}
+                    onwardItems={onwardItems}
+                    projects={projects}
+                    selectedForToday={selectedForToday}
+                    setSelectedForToday={setSelectedForToday}
+                    deferredItems={deferredItems}
+                    setDeferredItems={setDeferredItems}
+                    backlogItems={backlogItems}
+                    setBacklogItems={setBacklogItems}
+                    onBreakdownTask={handleBreakdownTask}
+                    sessions={sessions}
+                    brainDumpEntries={brainDumpEntries}
+                    onBrainDump={handleBrainDump}
+                    journalEntries={journalEntries}
+                    onJournalEntry={handleJournalEntry}
+                    onBreakdownSuggestion={handleBreakdownSuggestion}
+                    novaRetry={novaRetry}
+                    confirmInsight={confirmInsight}
+                    dismissInsight={dismissInsight}
+                  />
+                )}
+                {mainPage === 'program-regroup' && (
+                  <NOVAProgramPanel
+                    progId="regroup"
+                    novaState={novaState}
+                    setNovaState={setNovaState}
+                    novaChatInput={novaChatInput}
+                    setNovaChatInput={setNovaChatInput}
+                    novaLoading={novaLoading}
+                    sendNOVAMessage={sendNOVAMessage}
+                    addSyncEvent={addSyncEvent}
+                    setOnwardItems={setOnwardItems}
+                    uid={uid}
+                    onBack={() => setMainPage('hq')}
+                    T={T}
+                    onNewSession={onNewSession}
+                    buildNOVASystemPrompt={buildNOVASystemPrompt}
+                    onwardItems={onwardItems}
+                    projects={projects}
+                    selectedForToday={selectedForToday}
+                    setSelectedForToday={setSelectedForToday}
+                    deferredItems={deferredItems}
+                    setDeferredItems={setDeferredItems}
+                    backlogItems={backlogItems}
+                    setBacklogItems={setBacklogItems}
+                    onBreakdownTask={handleBreakdownTask}
+                    sessions={sessions}
+                    brainDumpEntries={brainDumpEntries}
+                    onBrainDump={handleBrainDump}
+                    journalEntries={journalEntries}
+                    onJournalEntry={handleJournalEntry}
+                    onBreakdownSuggestion={handleBreakdownSuggestion}
+                    novaRetry={novaRetry}
+                    confirmInsight={confirmInsight}
+                    dismissInsight={dismissInsight}
+                  />
+                )}
+                {mainPage === 'program-preview' && (
+                  <NOVAProgramPanel
+                    progId="preview"
+                    novaState={novaState}
+                    setNovaState={setNovaState}
+                    novaChatInput={novaChatInput}
+                    setNovaChatInput={setNovaChatInput}
+                    novaLoading={novaLoading}
+                    sendNOVAMessage={sendNOVAMessage}
+                    addSyncEvent={addSyncEvent}
+                    setOnwardItems={setOnwardItems}
+                    uid={uid}
+                    onBack={() => setMainPage('hq')}
+                    T={T}
+                    onNewSession={onNewSession}
+                    buildNOVASystemPrompt={buildNOVASystemPrompt}
+                    onwardItems={onwardItems}
+                    projects={projects}
+                    selectedForToday={selectedForToday}
+                    setSelectedForToday={setSelectedForToday}
+                    deferredItems={deferredItems}
+                    setDeferredItems={setDeferredItems}
+                    backlogItems={backlogItems}
+                    setBacklogItems={setBacklogItems}
+                    onBreakdownTask={handleBreakdownTask}
+                    sessions={sessions}
+                    brainDumpEntries={brainDumpEntries}
+                    onBrainDump={handleBrainDump}
+                    journalEntries={journalEntries}
+                    onJournalEntry={handleJournalEntry}
+                    onBreakdownSuggestion={handleBreakdownSuggestion}
+                    novaRetry={novaRetry}
+                    confirmInsight={confirmInsight}
+                    dismissInsight={dismissInsight}
+                  />
+                )}
               </div>
             </div>
 
@@ -1859,11 +2038,10 @@ import NovaToast from './components/nova/NovaToast.jsx';
                     addSyncEvent={addSyncEvent}
                     setOnwardItems={setOnwardItems}
                     uid={uid}
-                    closeWaypoint={closeWaypoint}
+                    onBack={closeWaypoint}
                     T={T}
                     onNewSession={onNewSession}
                     buildNOVASystemPrompt={buildNOVASystemPrompt}
-                    // New props for Briefing/Focus/Re-group enhancement
                     onwardItems={onwardItems}
                     projects={projects}
                     selectedForToday={selectedForToday}
@@ -1880,6 +2058,8 @@ import NovaToast from './components/nova/NovaToast.jsx';
                     onJournalEntry={handleJournalEntry}
                     onBreakdownSuggestion={handleBreakdownSuggestion}
                     novaRetry={novaRetry}
+                    confirmInsight={confirmInsight}
+                    dismissInsight={dismissInsight}
                   />
                 )}
 
@@ -1900,6 +2080,7 @@ import NovaToast from './components/nova/NovaToast.jsx';
                     toggleFocus={toggleFocus}
                     setConfirmDelete={setConfirmDelete}
                     availableTasks={availableTasks}
+                    deleteAvailableTask={deleteAvailableTask}
                     setDraggedTask={setDraggedTask}
                     moveOnwardItem={moveOnwardItem}
                     handleStartFocus={handleStartFocus}
@@ -1915,17 +2096,10 @@ import NovaToast from './components/nova/NovaToast.jsx';
                     selectedSkillId={selectedSkillId}
                     updateSkillLevel={updateSkillLevel}
                     addSubskill={addSubskill}
-                  />
-                )}
-
-                {waypointContext?.type === 'nova-insights' && (
-                  <NovaInsightsPanel
-                    novaState={novaState}
-                    apiKey={apiKey}
-                    closeWaypoint={closeWaypoint}
+                    prioritizeInput={prioritizeInput}
+                    setPrioritizeInput={setPrioritizeInput}
                     generateNovaPlan={generateNovaPlan}
-                    calcStreak={calcStreak}
-                    getWeeklyData={getWeeklyData}
+                    apiKey={apiKey}
                   />
                 )}
 
@@ -2039,9 +2213,9 @@ import NovaToast from './components/nova/NovaToast.jsx';
                     onDismiss={novaInteractions.dismissToast}
                     onAction={(action) => {
                       if (action.type === 'open_program') {
-                        openWaypoint({ type: 'program', id: action.payload.programId });
+                        setMainPage(`program-${action.payload.programId}`);
                       } else if (action.type === 'open_insights') {
-                        openWaypoint({ type: 'nova-insights', id: null });
+                        setMainPage('nova-insights');
                       } else if (action.type === 'open_waypoint') {
                         // Open the currently selected goal or the first project
                         const targetId = selectedId || projects[0]?.id;

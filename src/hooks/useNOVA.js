@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { chatWithNOVA, askAI } from '../utils/api.js';
 import { uid, progress } from '../utils/helpers.js';
-import { buildFullKnowledgeBlock, buildLightKnowledgeContext, buildStructuredKnowledgeBlock } from '../utils/knowledge.js';
-import { computePlanningConfidence, NOVA_DEFAULT } from '../utils/nova.js';
+import { buildFullKnowledgeBlock, buildLightKnowledgeContext, buildStructuredKnowledgeBlock, decayKnowledge, markEntriesUsed } from '../utils/knowledge.js';
+import { computePlanningConfidence, NOVA_DEFAULT, validateNOVAResponse, computePlanAccuracy, updatePlanAccuracyHistory } from '../utils/nova.js';
 import { useNovaRetry } from './useNovaRetry.js';
 
 export function useNOVA({ apiKey, projects, focus, waypointContext, loaded }) {
@@ -39,9 +39,35 @@ export function useNOVA({ apiKey, projects, focus, waypointContext, loaded }) {
   const knowledgePoolRef = useRef(knowledgePool);
   useEffect(() => { knowledgePoolRef.current = knowledgePool; }, [knowledgePool]);
 
+  // Tracks knowledge entry IDs used by buildNOVASystemPrompt so we can apply
+  // markEntriesUsed in a useEffect (not during render, which would cause
+  // "Cannot update a component while rendering a different component" in React 19).
+  const lastUsedEntryIdsRef = useRef(null);
+
   // Persist NOVA state
   useEffect(() => { localStorage.setItem('meridian_nova_v1', JSON.stringify(novaState)); }, [novaState]);
   useEffect(() => { localStorage.setItem('meridian_knowledge_pool_v1', JSON.stringify(knowledgePool)); }, [knowledgePool]);
+
+  // Knowledge decay effect — periodically decay AI-inferred entries
+  useEffect(() => {
+    const runDecay = () => {
+      setKnowledgePool(prev => decayKnowledge(prev));
+    };
+    runDecay(); // Run on mount
+    const interval = setInterval(runDecay, 3600000); // Every hour
+    return () => clearInterval(interval);
+  }, []);
+
+  // Apply markEntriesUsed after render (not during render) to avoid React 19
+  // "Cannot update a component while rendering a different component" error.
+  // buildNOVASystemPrompt stores used entry IDs in lastUsedEntryIdsRef instead
+  // of calling setKnowledgePool directly.
+  useEffect(() => {
+    if (lastUsedEntryIdsRef.current) {
+      setKnowledgePool(prev => markEntriesUsed(prev, lastUsedEntryIdsRef.current));
+      lastUsedEntryIdsRef.current = null;
+    }
+  });
 
   // Seed initial Knowledge Pool entries on first load (when pool is empty)
   useEffect(() => {
@@ -148,7 +174,14 @@ export function useNOVA({ apiKey, projects, focus, waypointContext, loaded }) {
     const confidence   = computePlanningConfidence(novaState.syncEvents);
     const routineNote  = novaState.routine ? `Known pattern: ${novaState.routine.summary}` : '';
     // Use structured bullet-point format for weaker models, prose for stronger ones
-    const knowledgeBlock = buildStructuredKnowledgeBlock(knowledgePool) || buildFullKnowledgeBlock(knowledgePool);
+    const kbResult = buildStructuredKnowledgeBlock(knowledgePool);
+    const knowledgeBlock = kbResult.text || buildFullKnowledgeBlock(knowledgePool).text || '';
+    // Track which entries were used for decay purposes — store in ref to apply
+    // in a useEffect (NOT during render, to avoid React 19 concurrent rendering error:
+    // "Cannot update a component while rendering a different component")
+    if (kbResult.usedEntryIds?.length > 0) {
+      lastUsedEntryIdsRef.current = kbResult.usedEntryIds;
+    }
     const base = `You are NOVA, a productivity companion and psychological coach. Planning confidence with this user: ${confidence}%. ${confidence < 30 ? 'Ask more questions to learn their patterns.' : confidence > 70 ? 'You know this user well — make bold, specific suggestions.' : 'Balance questions with suggestions.'} Active goals: ${goalsSummary}. Today's focus: ${focusSummary}. ${routineNote} Psychological coaching scope: stress reduction, task breakdown, work tips only — not personal therapy.${knowledgeBlock}`;
 
     if (programId === 'briefing') return `${base} This is a morning Briefing. Your FIRST message must be EXACTLY this mindset check-in: "On a scale of 1–5, how's your headspace going into today?" Use their score to calibrate: 1-2 = more coaching and task breakdown; 3 = balanced; 4-5 = jump straight to daily planning. Plan only for TODAY — not the week, not the month. Ask one question at a time. When the user says they feel ready, end your message with the exact token: [READY]`;
@@ -225,18 +258,146 @@ export function useNOVA({ apiKey, projects, focus, waypointContext, loaded }) {
     try {
       const cleaned = raw.replace(/```[\w]*\n?/g, '').replace(/```/g, '').trim();
       const parsed  = JSON.parse(cleaned);
-      setNovaState(prev => ({
-        ...prev,
-        routine: parsed.routine_update ? { summary: parsed.routine_update, lastUpdated: new Date().toISOString() } : prev.routine,
-        suggestedTasks: (parsed.suggested_tasks || []).map(t => ({ id: uid(), text: t, source: programId, accepted: null })),
-      }));
-      if (Array.isArray(parsed.knowledge_entries) && parsed.knowledge_entries.length > 0) {
-        addInferredEntries(parsed.knowledge_entries);
+      // Build pending insights instead of directly mutating state
+      const pending = [];
+      if (parsed.routine_update) {
+        pending.push({
+          id: uid(),
+          type: 'routine',
+          content: parsed.routine_update,
+          source: programId,
+          createdAt: Date.now(),
+        });
+      }
+      if (Array.isArray(parsed.suggested_tasks)) {
+        parsed.suggested_tasks.forEach(t => {
+          pending.push({
+            id: uid(),
+            type: 'task',
+            content: t,
+            source: programId,
+            createdAt: Date.now(),
+          });
+        });
+      }
+      if (Array.isArray(parsed.knowledge_entries)) {
+        parsed.knowledge_entries.forEach(e => {
+          pending.push({
+            id: uid(),
+            type: 'knowledge',
+            content: e,
+            source: programId,
+            createdAt: Date.now(),
+          });
+        });
+      }
+      if (pending.length > 0) {
+        setNovaState(prev => ({
+          ...prev,
+          pendingInsights: [...(prev.pendingInsights || []), ...pending],
+        }));
       }
     } catch { /* silently ignore parse errors */ }
-  }, [apiKey, addInferredEntries]);
+  }, [apiKey]);
+
+  const confirmInsight = useCallback((insightId) => {
+    setNovaState(prev => {
+      const insight = (prev.pendingInsights || []).find(i => i.id === insightId);
+      if (!insight) return prev;
+      const remaining = (prev.pendingInsights || []).filter(i => i.id !== insightId);
+      if (insight.type === 'routine') {
+        return {
+          ...prev,
+          routine: { summary: insight.content, lastUpdated: new Date().toISOString() },
+          pendingInsights: remaining,
+        };
+      }
+      if (insight.type === 'knowledge') {
+        // Add to knowledge pool via addInferredEntries
+        addInferredEntries([insight.content]);
+        return { ...prev, pendingInsights: remaining };
+      }
+      if (insight.type === 'task') {
+        return {
+          ...prev,
+          suggestedTasks: [...(prev.suggestedTasks || []), { id: uid(), text: insight.content, source: insight.source, accepted: null }],
+          pendingInsights: remaining,
+        };
+      }
+      return { ...prev, pendingInsights: remaining };
+    });
+  }, [addInferredEntries]);
+
+  const dismissInsight = useCallback((insightId) => {
+    setNovaState(prev => ({
+      ...prev,
+      pendingInsights: (prev.pendingInsights || []).filter(i => i.id !== insightId),
+    }));
+  }, []);
+
+  /**
+   * Record plan accuracy by comparing completed tasks against the daily plan.
+   * Called when tasks are checked off to build a feedback loop.
+   */
+  const recordPlanAccuracy = useCallback(() => {
+    const plan = novaState.dailyPlan;
+    if (!plan?.items?.length) return;
+    const today = new Date().toISOString().slice(0, 10);
+    if (plan.date !== today) return;
+    // Count how many plan items have matching completed subtasks
+    const completedPlanItems = plan.items.filter(item => {
+      return projects.some(p =>
+        (p.subtasks || []).some(s =>
+          s.done && s.title.toLowerCase().includes(item.title.toLowerCase().slice(0, 20))
+        )
+      );
+    });
+    const accuracy = completedPlanItems.length / plan.items.length;
+    setNovaState(prev => ({
+      ...prev,
+      planAccuracy: updatePlanAccuracyHistory(prev.planAccuracy?.history || [], {
+        date: today,
+        planned: plan.items.length,
+        completed: completedPlanItems.length,
+        accuracy,
+      }),
+    }));
+  }, [novaState.dailyPlan, projects]);
 
   const generateNovaPlanRef = useRef(null);
+
+  /**
+   * Real-time knowledge inference — lightweight extraction during conversation.
+   * Fire-and-forget: never blocks the main message flow.
+   * Results go to pendingInsights for user confirmation.
+   */
+  const inferKnowledgeFromMessage = useCallback(async (userText, programId) => {
+    if (!apiKey || userText.trim().length < 20) return;
+    try {
+      const system = 'You are a knowledge extraction API. Return ONLY a JSON array or empty array. Each item: {"cat":"work"|"goals"|"prefs"|"context","text":"factual present-tense statement (max 80 chars)","conf":0.0-1.0}. Only extract if the user reveals something new about their work style, preferences, goals, or context. Otherwise return [].';
+      const result = await chatWithNOVA([
+        { role: 'system', content: system },
+        { role: 'user', content: `Extract any new knowledge from this message: "${userText}"` },
+      ], apiKey);
+      const cleaned = result.replace(/```[\w]*\n?/g, '').replace(/```/g, '').trim();
+      const entries = JSON.parse(cleaned);
+      if (Array.isArray(entries) && entries.length > 0) {
+        const pending = entries.map(e => ({
+          id: uid(),
+          type: 'knowledge',
+          content: { cat: e.cat, text: e.text, conf: Math.min(0.6, e.conf || 0.3) },
+          source: `${programId}_realtime`,
+          createdAt: Date.now(),
+        }));
+        setNovaState(prev => ({
+          ...prev,
+          pendingInsights: [...(prev.pendingInsights || []), ...pending],
+        }));
+      }
+    } catch {
+      // Silently fail — real-time inference is best-effort
+    }
+  }, [apiKey]);
 
   const sendNOVAMessage = useCallback(async (programId, overrideText) => {
     const text = (overrideText || novaChatInput).trim();
@@ -257,9 +418,15 @@ export function useNOVA({ apiKey, projects, focus, waypointContext, loaded }) {
         const reply = await novaRetry.executeWithRetry(
           () => chatWithNOVA([{ role: 'system', content: systemPrompt }, userMsg], apiKey)
         ).then(r => r.data);
+        // Validate response
+        const validation = validateNOVAResponse(reply, programId);
+        if (!validation.valid) {
+          console.warn(`[NOVA] Response validation failed for ${programId}: ${validation.reason}`);
+        }
         setNovaState(prev => ({
           ...prev,
           programChats: { ...prev.programChats, focus: reply },
+          lastValidation: validation.valid ? null : validation,
         }));
       } finally { setNovaLoading(false); }
       return;
@@ -271,6 +438,11 @@ export function useNOVA({ apiKey, projects, focus, waypointContext, loaded }) {
       programChats: { ...prev.programChats, [programId]: updatedHistory },
     }));
     setNovaLoading(true);
+
+    // Fire-and-forget real-time knowledge inference (non-blocking)
+    if (programId !== 'focus') {
+      inferKnowledgeFromMessage(text, programId);
+    }
     try {
       const apiHistory = updatedHistory[0]?.role === 'assistant'
         ? [{ role: 'user', content: 'Hello' }, ...updatedHistory]
@@ -279,12 +451,18 @@ export function useNOVA({ apiKey, projects, focus, waypointContext, loaded }) {
       const reply    = await novaRetry.executeWithRetry(
         () => chatWithNOVA(messages, apiKey)
       ).then(r => r.data);
+      // Validate response
+      const validation = validateNOVAResponse(reply, programId);
+      if (!validation.valid) {
+        console.warn(`[NOVA] Response validation failed for ${programId}: ${validation.reason}`);
+      }
       const isReady  = reply.includes('[READY]');
       const cleanReply = reply.replace('[READY]', '').trim();
       const finalHistory = [...updatedHistory, { role: 'assistant', content: cleanReply }];
       setNovaState(prev => ({
         ...prev,
         programChats: { ...prev.programChats, [programId]: finalHistory },
+        lastValidation: validation.valid ? null : validation,
       }));
       if (isReady) {
         addSyncEvent('briefing_done', programId);
@@ -337,14 +515,19 @@ export function useNOVA({ apiKey, projects, focus, waypointContext, loaded }) {
   const generateNovaPlan = useCallback(async (userPriorities) => {
     if (!apiKey || novaState.planGenLoading) return;
 
-    // Require confidence >80% to generate a plan
+    // Dynamic confidence threshold based on plan accuracy history
     const confidence = computePlanningConfidence(novaState.syncEvents);
-    if (confidence < 80) {
+    const baseThreshold = 80;
+    const accuracyBonus = novaState.planAccuracy?.movingAverage
+      ? Math.round((novaState.planAccuracy.movingAverage - 0.5) * 40) // -20 to +20
+      : 0;
+    const effectiveThreshold = Math.max(50, Math.min(95, baseThreshold - accuracyBonus));
+    if (confidence < effectiveThreshold) {
       setNovaState(prev => ({
         ...prev,
         planGenLoading: false,
         dailyPlan: null,
-        planError: `NOVA confidence is ${confidence}% — needs to be at least 80% to generate a reliable plan. Complete more Briefings and accept/reject tasks to improve confidence.`,
+        planError: `NOVA confidence is ${confidence}% — needs to be at least ${effectiveThreshold}% to generate a reliable plan. ${accuracyBonus < 0 ? 'Previous plans have had low accuracy, so NOVA is being more cautious.' : 'Complete more Briefings and accept/reject tasks to improve confidence.'}`,
       }));
       return;
     }
@@ -558,5 +741,8 @@ Return a JSON array of 5-7 tasks for ${isPlanningForTomorrow ? 'tomorrow' : 'tod
     buildNOVASystemPrompt,
     scanWeeklyGoals,
     novaRetry,
+    confirmInsight,
+    dismissInsight,
+    recordPlanAccuracy,
   };
 }

@@ -28,6 +28,7 @@ export default function CanvasPanelWrapper({ panelId, ...props }) {
             onToggleFocus={props.toggleFocus}
             onConfirmDelete={props.setConfirmDelete}
             availableTasks={props.availableTasks}
+            onDeleteAvailableTask={props.deleteAvailableTask}
             onDragStart={task => props.setDraggedTask(task)}
             onMoveItem={props.moveOnwardItem}
             onStartFocus={props.handleStartFocus}
@@ -36,6 +37,12 @@ export default function CanvasPanelWrapper({ panelId, ...props }) {
             deferredItems={props.deferredItems}
             selectedForToday={props.selectedForToday}
             onRestoreFromBacklog={props.handleRestoreFromBacklog}
+            // Plan props
+            novaState={props.novaState}
+            prioritizeInput={props.prioritizeInput}
+            setPrioritizeInput={props.setPrioritizeInput}
+            generateNovaPlan={props.generateNovaPlan}
+            apiKey={props.apiKey}
           />
         )}
         {panelId === 'map' && (

@@ -386,7 +386,7 @@ const E1_PAGE_TIP = {
           map: 'Use the map to see how your goals connect and overlap.',
           paths: 'Paths show your long-term trajectory across different areas.',
           skills: 'Track skill growth by logging evidence from completed tasks.',
-          constellation: 'Your goals form a solar system — drag to rearrange.',
+          constellation: 'Your goals form a system — drag to rearrange.',
         };
         return tips[payload.page] || 'Explore around to discover features.';
       },

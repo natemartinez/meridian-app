@@ -14,21 +14,21 @@ export default function CompassWidget({ activePage, onNavigate }) {
     }}>
       {/* Center button */}
       <button
-        onClick={() => onNavigate('constellation')}
+        onClick={() => { onNavigate('goals'); }}
         style={{
           position:'absolute', top:'50%', left:'50%',
           transform:'translate(-50%,-50%)',
           width:28, height:28, borderRadius:'50%',
-          background: activePage==='constellation' ? T.accent : T.card,
-          border:`1.5px solid ${activePage==='constellation' ? T.accent : T.border}`,
-          color: activePage==='constellation' ? T.bg : T.muted,
+          background: activePage==='goals' ? T.accent : T.card,
+          border:`1.5px solid ${activePage==='goals' ? T.accent : T.border}`,
+          color: activePage==='goals' ? T.bg : T.muted,
           fontSize:11, fontWeight:800, fontFamily:"'Syne',sans-serif",
           cursor:'pointer', pointerEvents:'all',
           display:'flex', alignItems:'center', justifyContent:'center',
           transition:'all .18s',
           lineHeight:1,
         }}
-        title="Constellation"
+        title="Goals"
       >✦</button>
       {/* N tick */}
       <div style={{ position:'absolute', top:'6px', left:'50%', transform:'translateX(-50%)', width:'1.5px', height:'6px', background: activePage==='onward' ? T.accent : T.dim, pointerEvents:'none' }} />
@@ -41,7 +41,7 @@ export default function CompassWidget({ activePage, onNavigate }) {
       {/* Arm labels */}
       {arms.map(a => (
         <button key={a.page}
-          onClick={() => onNavigate(a.page)}
+          onClick={() => { onNavigate(a.page); }}
           style={{
             position:'absolute',
             top: a.top, left: a.left, right: a.right,

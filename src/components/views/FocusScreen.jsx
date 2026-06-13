@@ -50,6 +50,7 @@ export default function FocusScreen({
     } else {
       setSessionId(uid());
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Timer tick

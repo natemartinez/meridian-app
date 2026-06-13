@@ -20,5 +20,6 @@ export default function useLocalStorageSync(entries, loaded = true) {
     // Use JSON.stringify of all values as a stable dependency key.
     // This avoids creating a new array reference on every render via .map(),
     // which was causing the effect to fire on every render cycle.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, JSON.stringify(entries.map(([v]) => v))]);
 }

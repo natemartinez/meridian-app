@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { chatWithNOVA, askAI } from '../utils/api.js';
 import { uid, progress } from '../utils/helpers.js';
 import { buildFullKnowledgeBlock, buildLightKnowledgeContext, buildStructuredKnowledgeBlock, decayKnowledge, markEntriesUsed } from '../utils/knowledge.js';
-import { computePlanningConfidence, NOVA_DEFAULT, validateNOVAResponse, computePlanAccuracy, updatePlanAccuracyHistory } from '../utils/nova.js';
+import { computePlanningConfidence, NOVA_DEFAULT, validateNOVAResponse, updatePlanAccuracyHistory } from '../utils/nova.js';
 import { useNovaRetry } from './useNovaRetry.js';
 
 export function useNOVA({ apiKey, projects, focus, waypointContext, loaded }) {
@@ -29,7 +29,7 @@ export function useNOVA({ apiKey, projects, focus, waypointContext, loaded }) {
     cooldownMs: 5000,
     cacheKey: 'meridian_nova_cache',
     onSuccess: (data, attempts) => {
-      console.log(`[NOVA] Request succeeded after ${attempts} attempt(s)`);
+      // NOVA request succeeded — no action needed
     },
     onError: (error) => {
       console.error('[NOVA] Request failed after all retries:', error.message);
@@ -84,6 +84,7 @@ export function useNOVA({ apiKey, projects, focus, waypointContext, loaded }) {
       entries: seedEntries,
       lastUpdated: now,
     }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // intentionally narrow — one-time seed on mount
 
   const addSyncEvent = useCallback((type, detail = '') => {
@@ -246,7 +247,7 @@ export function useNOVA({ apiKey, projects, focus, waypointContext, loaded }) {
         programChats: { ...prev.programChats, [progId]: [{ role: 'assistant', content: cleanReply }] },
       }));
     }).finally(() => setNovaLoading(false));
-  }, [waypointContext?.type, waypointContext?.id, apiKey, buildNOVASystemPrompt, loaded, novaSessionKey, novaRetry]);
+  }, [waypointContext?.type, waypointContext?.id, apiKey, buildNOVASystemPrompt, loaded, novaSessionKey, novaRetry, novaLoading, novaState.programChats]);
 
   const extractNOVAInsights = useCallback(async (programId, messages) => {
     if (!apiKey || messages.length < 3) return;
@@ -470,7 +471,7 @@ export function useNOVA({ apiKey, projects, focus, waypointContext, loaded }) {
         generateNovaPlanRef.current?.();
       }
     } finally { setNovaLoading(false); }
-  }, [novaChatInput, novaLoading, apiKey, novaState, buildNOVASystemPrompt, addSyncEvent, extractNOVAInsights, novaRetry]);
+  }, [novaChatInput, novaLoading, apiKey, novaState, buildNOVASystemPrompt, addSyncEvent, extractNOVAInsights, novaRetry, inferKnowledgeFromMessage]);
 
   // Internal helpers for generateNovaPlan (same logic as App.jsx's calcStreak/getWeeklyData)
   const allCompletionDates = () => {
@@ -556,7 +557,6 @@ export function useNOVA({ apiKey, projects, focus, waypointContext, loaded }) {
     const now = new Date();
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
-    const currentTimeMinutes = currentHour * 60 + currentMinute;
     const isPlanningForTomorrow = currentHour >= 18; // After 6pm, plan for tomorrow
     const planDate = new Date();
     if (isPlanningForTomorrow) planDate.setDate(planDate.getDate() + 1);
@@ -645,8 +645,7 @@ Return a JSON array of 5-7 tasks for ${isPlanningForTomorrow ? 'tomorrow' : 'tod
     } catch {
       setNovaState(prev => ({ ...prev, planGenLoading: false }));
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiKey, projects, novaState.planGenLoading, novaState.syncEvents, novaState.routine, knowledgePool]);
+  }, [apiKey, projects, novaState.planGenLoading, novaState.syncEvents, novaState.routine, novaState.planAccuracy, knowledgePool, novaRetry]);
 
   generateNovaPlanRef.current = generateNovaPlan;
 
@@ -659,6 +658,7 @@ Return a JSON array of 5-7 tasks for ${isPlanningForTomorrow ? 'tomorrow' : 'tod
     if ((!plan || plan.date !== today) && !novaState.planGenLoading && confidence >= 80) {
       generateNovaPlan();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiKey]); // intentionally narrow — one-time startup trigger
 
   // ── Weekly Goals Scan ──
@@ -670,7 +670,6 @@ Return a JSON array of 5-7 tasks for ${isPlanningForTomorrow ? 'tomorrow' : 'tod
     const year = now.getFullYear();
     const month = now.getMonth();
     const firstDow = new Date(year, month, 1).getDay();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
     const today = now.getDate();
     const currentWeek = Math.floor((firstDow + today - 1) / 7);
     const weekStart = new Date(year, month, 1 + currentWeek * 7 - firstDow);
@@ -713,13 +712,13 @@ Return a JSON array of 5-7 tasks for ${isPlanningForTomorrow ? 'tomorrow' : 'tod
         ...prev,
         weeklyInsights: { loading: false, text: reply.trim(), error: null, scannedAt: Date.now() },
       }));
-    } catch (err) {
+    } catch {
       setNovaState(prev => ({
         ...prev,
         weeklyInsights: { loading: false, text: null, error: 'Failed to scan weekly goals. Try again.' },
       }));
     }
-  }, [apiKey, projects]);
+  }, [apiKey, projects, novaRetry]);
 
   return {
     novaState, setNovaState,

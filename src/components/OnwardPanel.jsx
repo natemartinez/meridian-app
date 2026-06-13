@@ -94,30 +94,39 @@ export default function OnwardPanel({
           </div>
         )}
         {/* Plan items */}
-        {novaState?.planGenLoading && planItems.length === 0 ? (
-          <div style={{ padding:'6px 0', fontFamily:"'IBM Plex Mono',monospace", fontSize:8, color:T.muted, textAlign:'center' }}>Building plan…</div>
-        ) : planItems.length === 0 && !planError ? (
-          <div style={{ padding:'6px 0', fontFamily:"'IBM Plex Mono',monospace", fontSize:8, color:T.muted, lineHeight:1.5 }}>
-            {apiKey ? 'No plan yet — complete a Briefing or tap Refresh.' : 'Add an API key to generate plans.'}
-          </div>
-        ) : planItems.length > 0 ? (
-          <div style={{ maxHeight:120, overflowY:'auto' }}>
-            {planItems.map((item, idx) => {
-              const dotColor = item.complexity === 'high' ? T.rose : item.complexity === 'medium' ? T.accent : T.muted;
-              return (
-                <div key={item.id} style={{ padding:'4px 0', display:'flex', alignItems:'flex-start', gap:6, borderBottom: idx < planItems.length - 1 ? `1px solid ${T.border}` : 'none' }}>
-                  <div style={{ width:4, height:4, borderRadius:'50%', background:dotColor, marginTop:4, flexShrink:0 }} />
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:T.text, lineHeight:1.4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.title}</div>
-                    <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:8, color:T.muted, marginTop:1 }}>
-                      {item.startMinutes !== undefined ? `${fmtTime(item.startMinutes)}` : ''} ~{item.estimatedMinutes}m{item.goalTitle ? ` · ${item.goalTitle.slice(0,18)}${item.goalTitle.length > 18 ? '…' : ''}` : ''}
+        {(() => {
+          if (novaState?.planGenLoading && planItems.length === 0) {
+            return <div style={{ padding:'6px 0', fontFamily:"'IBM Plex Mono',monospace", fontSize:8, color:T.muted, textAlign:'center' }}>Building plan…</div>;
+          }
+          if (planItems.length === 0 && !planError) {
+            return (
+              <div style={{ padding:'6px 0', fontFamily:"'IBM Plex Mono',monospace", fontSize:8, color:T.muted, lineHeight:1.5 }}>
+                {apiKey ? 'No plan yet — complete a Briefing or tap Refresh.' : 'Add an API key to generate plans.'}
+              </div>
+            );
+          }
+          if (planItems.length > 0) {
+            return (
+              <div style={{ maxHeight:120, overflowY:'auto' }}>
+                {planItems.map((item, idx) => {
+                  const dotColor = item.complexity === 'high' ? T.rose : item.complexity === 'medium' ? T.accent : T.muted;
+                  return (
+                    <div key={item.id} style={{ padding:'4px 0', display:'flex', alignItems:'flex-start', gap:6, borderBottom: idx < planItems.length - 1 ? `1px solid ${T.border}` : 'none' }}>
+                      <div style={{ width:4, height:4, borderRadius:'50%', background:dotColor, marginTop:4, flexShrink:0 }} />
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:T.text, lineHeight:1.4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.title}</div>
+                        <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:8, color:T.muted, marginTop:1 }}>
+                          {item.startMinutes !== undefined ? `${fmtTime(item.startMinutes)}` : ''} ~{item.estimatedMinutes}m{item.goalTitle ? ` · ${item.goalTitle.slice(0,18)}${item.goalTitle.length > 18 ? '…' : ''}` : ''}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
+                  );
+                })}
+              </div>
+            );
+          }
+          return null;
+        })()}
       </div>
 
       {/* Add form */}

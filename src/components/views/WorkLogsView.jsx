@@ -51,6 +51,7 @@ function LogEditor({ log, folderId, folderName, onSave, onBack }) {
   useEffect(() => {
     if (editor && log.content !== editor.getHTML()) editor.commands.setContent(log.content);
     setTitle(log.title);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [log.id]);
 
   return (

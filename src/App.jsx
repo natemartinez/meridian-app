@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { T, NODE_PALETTE } from './utils/theme.js';
 import { askAI } from './utils/api.js';
-import { uid, projectPos, progress, DEFAULT_SKILLS, parseDeferClue } from './utils/helpers.js';
-import { hexToRgb, rgba, drawGlow, drawProgressArc, drawSubtaskNode, drawCheckpointNode, rrect } from './utils/canvas.js';
+import { uid, projectPos, DEFAULT_SKILLS } from './utils/helpers.js';
 
 import CompassWidget from './components/CompassWidget.jsx';
 import OnwardPanel from './components/OnwardPanel.jsx';
@@ -46,15 +45,14 @@ import NovaToast from './components/nova/NovaToast.jsx';
       const [selectedId, setSelectedId] = useState(null);
       const [focus, setFocus]           = useState(["", "", ""]);
       const [modal, setModal]           = useState(false);
-      const [form, setForm]             = useState({ title: "", desc: "", measurable: "", achievable: "", relevant: "", deadline: "", priority: "low", scale: "short" });
+      const [, setForm]                 = useState({ title: "", desc: "", measurable: "", achievable: "", relevant: "", deadline: "", priority: "low", scale: "short" });
       const [aiMsg, setAiMsg]           = useState("");
       const [companionLoading, setCompanionLoading] = useState(false);
       const [pan, setPan]               = useState({ x: 0, y: 0 });
       const [dragging, setDragging]     = useState(null);
       const [loaded, setLoaded]         = useState(false);
       const [apiKey, setApiKey]         = useState(() => localStorage.getItem('meridian_api_key') || null);
-      const [expandedNote, setExpandedNote] = useState(null);
-      const [planningDay, setPlanningDay]   = useState(false);
+      const [, setPlanningDay]          = useState(false);
       const [addInput, setAddInput]     = useState('');
       const [confirmDelete, setConfirmDelete] = useState(null);
       // Compass/page state
@@ -112,7 +110,6 @@ import NovaToast from './components/nova/NovaToast.jsx';
       const [selectedSkillId, setSelectedSkillId] = useState(null);
       // Top-level navigation
       const [mainPage, setMainPage]           = useState('hq');
-      const [carouselOpen, setCarouselOpen]   = useState(true);
       const [intensity, setIntensity]         = useState({ low:35, medium:55, high:75 });
       const [showApiKey, setShowApiKey]       = useState(false);
       const [showMindCheckCard, setShowMindCheckCard] = useState(false);
@@ -163,16 +160,13 @@ import NovaToast from './components/nova/NovaToast.jsx';
         novaState, setNovaState,
         novaChatInput, setNovaChatInput,
         novaLoading,
-        novaSessionKey,
-        knowledgePool, setKnowledgePool,
-        knowledgePoolRef,
+        knowledgePool,
         addSyncEvent,
         onNewSession,
         addKnowledgeEntry,
         deleteKnowledgeEntry,
         editKnowledgeEntry,
         updateCorrections,
-        addInferredEntries,
         sendNOVAMessage,
         generateNovaPlan,
         buildNOVASystemPrompt,
@@ -294,7 +288,7 @@ import NovaToast from './components/nova/NovaToast.jsx';
         todayStr, sessionDurationMin,
         getSessionsForDay, getSessionsForWeek, getSessionsForMonth,
         getTodayStats, startSession, stopSession,
-        calcStreak, getWeeklyData, getMonthlyData, planDay,
+        calcStreak, getWeeklyData,
       } = useTracking({
         projects, sessions, activeSession,
         setSessions, setActiveSession, apiKey,
@@ -340,6 +334,7 @@ import NovaToast from './components/nova/NovaToast.jsx';
             }
           }, 500);
         });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       }, []);
 
       // Auto-save on every projects/focus/onwardItems/skills change
@@ -460,7 +455,7 @@ import NovaToast from './components/nova/NovaToast.jsx';
         sessions,
         deferredItems.length,
         backlogItems.length,
-        computePlanningConfidence,
+        novaInteractions,
       ]);
 
       // ── Canvas draw loop ──────────────────────────────────────
@@ -569,55 +564,6 @@ import NovaToast from './components/nova/NovaToast.jsx';
       const selected  = projects.find((p) => p.id === selectedId);
       const colorFor  = (i) => NODE_PALETTE[i % NODE_PALETTE.length];
 
-      const smartComplete = (f) =>
-        f.title.trim() && f.measurable.trim() && f.achievable.trim() && f.relevant.trim() && f.deadline;
-
-      const addProject = useCallback(async () => {
-        if (!smartComplete(form)) return;
-        const id    = uid();
-        const color = colorFor(projects.length);
-        const pos   = projectPos(projects.length);
-        setProjects((p) => [...p, {
-          id, color, pos,
-          title:      form.title.trim(),
-          desc:       form.desc.trim(),
-          measurable: form.measurable.trim(),
-          achievable: form.achievable.trim(),
-          relevant:   form.relevant.trim(),
-          deadline:   form.deadline,
-          priority:   form.priority || 'low',
-          scale:      form.scale    || 'short',
-          inFocus:    false,
-          completedAt: null,
-          subtasks: [], checkpoints: [],
-        }]);
-        setSelectedId(id);
-        setModal(false);
-        setAiMsg("✦ Generating subtasks and checkpoints...");
-
-        const system  = `You are a productivity assistant. Return ONLY a valid JSON array of objects shaped {title:string, isCheckpoint:boolean}. No markdown, no explanation. 4–6 items. Include 1–2 milestones (isCheckpoint:true) and the rest as regular subtasks. Milestones should mark meaningful progress gates toward the measurable outcome. Subtasks should be concrete and actionable.`;
-        const userCtx = `Goal: "${form.title}". Description: "${form.desc || "none"}". Success metric: "${form.measurable}". Motivation: "${form.relevant}". Achievability note: "${form.achievable}". Deadline: ${form.deadline}. Generate subtasks and milestone checkpoints for this SMART goal.`;
-        const raw = await askAI(system, userCtx, apiKey);
-
-        try {
-          const items = JSON.parse(raw.replace(/```json|```/g, "").trim());
-          setProjects((prev) =>
-            prev.map((p) => {
-              if (p.id !== id) return p;
-              return {
-                ...p,
-                subtasks:    items.filter((x) => !x.isCheckpoint).map((x) => ({ id: uid(), title: x.title, done: false })),
-                checkpoints: items.filter((x) =>  x.isCheckpoint).map((x) => ({ id: uid(), title: x.title, done: false })),
-              };
-            })
-          );
-          setAiMsg(`✦ ${items.length} items generated for "${form.title}"`);
-        } catch {
-          setAiMsg("AI responded but couldn't parse. Try adding subtasks manually.");
-        }
-        setForm({ title: "", desc: "", measurable: "", achievable: "", relevant: "", deadline: "", priority: "low", scale: "short" });
-      }, [form, projects.length, apiKey]);
-
       // Handler for GoalModal onCreate — creates a goal from the new two-stage modal
       const createGoalFromModal = useCallback((goalData) => {
         const id    = uid();
@@ -650,7 +596,7 @@ import NovaToast from './components/nova/NovaToast.jsx';
         if (goalData.subtasks?.length || goalData.checkpoints?.length) {
           setAiMsg(`✦ ${(goalData.subtasks?.length || 0) + (goalData.checkpoints?.length || 0)} items generated for "${newProject.title}"`);
         }
-      }, [projects.length]);
+      }, [projects.length, novaInteractions]);
 
       // Onward item handlers
       const addOnwardItem = () => {
@@ -954,13 +900,6 @@ import NovaToast from './components/nova/NovaToast.jsx';
         setAddInput('');
       };
 
-      const updateNote = (projId, itemId, isCheckpoint, notes) =>
-        setProjects(prev => prev.map(p => {
-          if (p.id !== projId) return p;
-          return isCheckpoint
-            ? { ...p, checkpoints: p.checkpoints.map(c => c.id === itemId ? { ...c, notes } : c) }
-            : { ...p, subtasks:    p.subtasks.map(s    => s.id === itemId ? { ...s, notes } : s) };
-        }));
 
       const checkIn = async () => {
         if (!selected) { setAiMsg('Open a goal first to use Check In.'); return; }
@@ -1016,17 +955,13 @@ import NovaToast from './components/nova/NovaToast.jsx';
         const cy   = e.clientY - rect.top;
         nodeDragged.current  = false;
         mouseDownPos.current = { cx, cy, clientX: e.clientX, clientY: e.clientY };
-        console.log(`[DEBUG_RESIZE] onCanvasMouseDown: canvas rect top=${rect.top} left=${rect.left} cx=${cx.toFixed(1)} cy=${cy.toFixed(1)}`);
 
         // Check for resize handle click on Onward page
         if (activePageRef.current === 'onward') {
-          console.log(`[DEBUG_RESIZE] onCanvasMouseDown: searching onwardHitAreas (count=${onwardHitAreasRef.current.length})`);
           const hit = onwardHitAreasRef.current.find(a => cx>=a.x && cx<=a.x+a.w && cy>=a.y && cy<=a.y+a.h);
-          console.log(`[DEBUG_RESIZE] onCanvasMouseDown: hit found =`, hit ? `id=${hit.id} x=${hit.x} y=${hit.y} w=${hit.w} h=${hit.h}` : 'null');
           if (hit && hit.id.startsWith('resize:')) {
             const itemId = hit.resizeItemId;
             const item = onwardItemsRef.current.find(it => it.id === itemId);
-            console.log(`[DEBUG_RESIZE] onCanvasMouseDown: RESIZE HANDLE CLICKED! itemId=${itemId} item=`, item ? item.title : 'NOT FOUND');
             if (item) {
               const ROW_START = 6;
               const VISIBLE_HOURS = 5.75;
@@ -1038,11 +973,8 @@ import NovaToast from './components/nova/NovaToast.jsx';
               const minuteFrac = minuteOffset / 60;
               const itemTopY = PAD + (Math.floor(item.hour / 60) - ROW_START) * rowHcss + minuteFrac * rowHcss;
               const startDuration = item.duration || 60;
-              console.log(`[DEBUG_RESIZE] onCanvasMouseDown: Setting resizeDrag state itemId=${itemId} startY=${cy.toFixed(1)} startDuration=${startDuration}`);
               setResizeDrag({ itemId, startY: cy, startDuration, hour: Math.floor(item.hour / 60), startMinute: item.hour % 60, itemTopY });
               return;
-            } else {
-              console.log(`[DEBUG_RESIZE] onCanvasMouseDown: item NOT FOUND in onwardItems for itemId=${itemId}`);
             }
           }
 
@@ -1117,7 +1049,6 @@ import NovaToast from './components/nova/NovaToast.jsx';
         // Handle resize drag on Onward page
         if (activePageRef.current === 'onward') {
           const rd = resizeDragRef.current;
-          console.log(`[DEBUG_RESIZE] onCanvasMouseMove: onward page, resizeDragRef.current=`, rd ? `itemId=${rd.itemId} startY=${rd.startY.toFixed(1)} startDuration=${rd.startDuration}` : 'null');
           if (rd) {
             const canvas = canvasRef.current;
             if (!canvas) return;
@@ -1132,7 +1063,6 @@ import NovaToast from './components/nova/NovaToast.jsx';
             const deltaMinutes = Math.round(dy / rowHcss * 60);
             // Clamp duration between 15 and 240 minutes
             const newDuration = Math.max(15, Math.min(240, rd.startDuration + deltaMinutes));
-            console.log(`[DEBUG_RESIZE] onCanvasMouseMove: RESIZING! dy=${dy.toFixed(1)}px deltaMinutes=${deltaMinutes} newDuration=${newDuration} rowHcss=${rowHcss.toFixed(2)}`);
             setOnwardItems(prev => prev.map(it =>
               it.id === rd.itemId ? { ...it, duration: newDuration } : it
             ));
@@ -1202,7 +1132,7 @@ import NovaToast from './components/nova/NovaToast.jsx';
           setDragOverHour(ROW_START + hi);
         }
       };
-      const onCanvasDragLeave = (e) => {
+      const onCanvasDragLeave = () => {
         setDragOverHour(null);
       };
       const onCanvasDrop = (e) => {
@@ -1220,13 +1150,11 @@ import NovaToast from './components/nova/NovaToast.jsx';
 
       const onCanvasMouseUp = (e) => {
         const page = activePageRef.current;
-        const d    = draggingRef.current;
         const md   = mouseDownPos.current;
         const wasClick = md && Math.hypot(e.clientX - md.clientX, e.clientY - md.clientY) < 5;
 
         // Clear resize drag state on mouse up — use ref, not state, since setResizeDrag is async
         if (resizeDragRef.current) {
-          console.log(`[DEBUG_RESIZE] onCanvasMouseUp: CLEARING resizeDrag for itemId=${resizeDragRef.current.itemId}`);
           setResizeDrag(null);
         }
 

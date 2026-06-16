@@ -137,6 +137,8 @@ describe('NOVA_DEFAULT', () => {
       planGenLoading: false,
       planError: null,
       weeklyInsights: null,
+      pendingInsights: [],
+      planAccuracy: { history: [], movingAverage: null },
     });
   });
 });

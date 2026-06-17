@@ -31,7 +31,7 @@ import { buildLightKnowledgeContext } from './utils/knowledge.js';
 import { computePlanningConfidence } from './utils/nova.js';
 import NOVAProgramPanel from './components/nova/NOVAProgramPanel.jsx';
 import { useNOVA } from './hooks/useNOVA.js';
-import { drawOnwardPage, drawMapPage, drawPathsPage, drawSkillsPage, drawConstellationPage } from './utils/drawPages.js';
+import { drawOnwardPage, drawMapPage, drawPathsPage, drawSkillsPage, drawGoalsPage } from './utils/drawPages.js';
 import useTracking from './hooks/useTracking.js';
 import useLocalStorageSync from './hooks/useLocalStorageSync.js';
 import { useOnwardScroll } from './hooks/useOnwardScroll.js';
@@ -547,7 +547,7 @@ import NovaToast from './components/nova/NovaToast.jsx';
           } else if (page === 'skills') {
             drawSkillsPage(ctx, dpr, w, h, t, refs);
           } else {
-            drawConstellationPage(ctx, dpr, w, h, t, refs);
+            drawGoalsPage(ctx, dpr, w, h, t, refs);
           }
 
           animRef.current = requestAnimationFrame(frame);

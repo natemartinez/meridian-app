@@ -1,5 +1,5 @@
 import { T } from './theme.js';
-import { hexToRgb, rgba, drawGlow, drawProgressArc, rrect } from './canvas.js';
+import { hexToRgb, rgba, drawGlow, drawProgressArc, rrect, drawSubtaskNode, drawCheckpointNode } from './canvas.js';
 import { progress } from './helpers.js';
 
 // ── Onward page ──────────────────────────────────────────────────────────────
@@ -903,14 +903,72 @@ export function drawSkillsPage(ctx, dpr, w, h, t, refs) {
   skillsHitAreasRef.current = hitAreas;
 }
 
-// ── Goals page ───────────────────────────────────────────────────────────
-export function drawConstellationPage(ctx, dpr, w, h, t, refs) {
-  const { projectsRef, selectedIdRef, sunIdRef, panRef, draggingRef, solarHitAreasRef, solarSunPosRef } = refs;
+// ── Goals page ──────────────────────────────────────────────────────────────
+export function drawGoalsPage(ctx, dpr, w, h, t, refs) {
+  const { projectsRef, selectedIdRef, panRef, draggingRef, goalHitAreasRef, topGoalsRef, goalDragRef } = refs;
   const hitAreas = [];
   const projs = projectsRef.current.filter(p => !p.completedAt);
   const selId = selectedIdRef.current;
-  const pan   = panRef.current;
-  const drag  = draggingRef.current;
+  const pan = panRef.current;
+  const drag = draggingRef.current;
+  const topGoalIds = topGoalsRef?.current || [];
+  const gd = goalDragRef?.current;
+
+  // ── Background nebula glow ──────────────────────────────────────────
+  if (projs.length > 0) {
+    // Compute bounding box of all goals
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    projs.forEach((p, i) => {
+      const pos = p.pos || { x: 240 + i * 440, y: 270 };
+      const px = pos.x + pan.x * dpr;
+      const py = pos.y + pan.y * dpr;
+      if (px < minX) minX = px; if (px > maxX) maxX = px;
+      if (py < minY) minY = py; if (py > maxY) maxY = py;
+    });
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const nebulaR = Math.max(maxX - minX, maxY - minY) * 0.8 + 200 * dpr;
+
+    // Subtle purple-blue nebula glow behind goals
+    const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, nebulaR);
+    grd.addColorStop(0, 'rgba(155,121,232,0.04)');
+    grd.addColorStop(0.4, 'rgba(83,170,255,0.025)');
+    grd.addColorStop(1, 'rgba(155,121,232,0)');
+    ctx.save();
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+  }
+
+  // ── Constellation lines between nearby goals ────────────────────────
+  if (projs.length >= 2) {
+    const positions = projs.map((p, i) => {
+      const pos = p.pos || { x: 240 + i * 440, y: 270 };
+      return { x: pos.x + pan.x * dpr, y: pos.y + pan.y * dpr, color: p.color };
+    });
+    // Connect goals that are within 600px of each other
+    for (let i = 0; i < positions.length; i++) {
+      for (let j = i + 1; j < positions.length; j++) {
+        const dx = positions[i].x - positions[j].x;
+        const dy = positions[i].y - positions[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 600 * dpr) {
+          const alpha = Math.max(0, 0.12 * (1 - dist / (600 * dpr)));
+          const twinkle = 0.6 + 0.4 * Math.sin(t * 0.5 + i * 2.3 + j * 1.7);
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(positions[i].x, positions[i].y);
+          ctx.lineTo(positions[j].x, positions[j].y);
+          ctx.strokeStyle = `rgba(214,226,245,${alpha * twinkle})`;
+          ctx.lineWidth = 0.5 * dpr;
+          ctx.setLineDash([3 * dpr, 6 * dpr]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.restore();
+        }
+      }
+    }
+  }
 
   // Heading
   ctx.save();
@@ -922,6 +980,7 @@ export function drawConstellationPage(ctx, dpr, w, h, t, refs) {
   ctx.restore();
 
   if (!projs.length) {
+    // Empty state
     ctx.save();
     ctx.font = `${11*dpr}px 'IBM Plex Mono',monospace`;
     ctx.fillStyle = T.muted;
@@ -929,45 +988,80 @@ export function drawConstellationPage(ctx, dpr, w, h, t, refs) {
     ctx.textBaseline = 'middle';
     ctx.fillText('No goals yet — create one to see it here.', w/2, h/2);
     ctx.restore();
-    solarHitAreasRef.current = hitAreas;
-    solarSunPosRef.current = { x: 0, y: 0, R: 0, id: null };
+    goalHitAreasRef.current = hitAreas;
     return;
   }
 
-  const cx = w / 2 + pan.x * dpr;
-  const cy = h / 2 + pan.y * dpr;
-  const baseR = Math.min(w, h) * 0.32;
-
-  // Draw orbit rings
-  projs.forEach((_, i) => {
-    const orbitR = baseR * (0.25 + (i / Math.max(projs.length - 1, 1)) * 0.65);
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, orbitR, 0, Math.PI * 2);
-    ctx.strokeStyle = rgba(T.border, .15);
-    ctx.lineWidth = 0.5 * dpr;
-    ctx.setLineDash([4*dpr, 4*dpr]);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.restore();
+  // ── Floating space dust particles ───────────────────────────────────
+  // Deterministic particles based on goal positions for visual depth
+  projs.forEach((p, i) => {
+    const pos = p.pos || { x: 240 + i * 440, y: 270 };
+    const px = pos.x + pan.x * dpr;
+    const py = pos.y + pan.y * dpr;
+    // Scatter tiny dots around each goal
+    for (let d = 0; d < 4; d++) {
+      const angle = t * 0.3 + i * 1.8 + d * 1.2;
+      const rad = (40 + d * 12) * dpr;
+      const dx = Math.cos(angle) * rad;
+      const dy = Math.sin(angle * 0.7) * rad * 0.5;
+      const dotSize = (0.8 + 0.4 * Math.sin(t * 0.5 + i + d)) * dpr;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(px + dx, py + dy, dotSize, 0, Math.PI * 2);
+      ctx.fillStyle = rgba(p.color, 0.08 + 0.06 * Math.sin(t + i + d));
+      ctx.fill();
+      ctx.restore();
+    }
   });
 
-  // Draw planets
+  // Draw each goal as a static, draggable node
   projs.forEach((p, i) => {
-    const orbitR = baseR * (0.25 + (i / Math.max(projs.length - 1, 1)) * 0.65);
-    const angle = t * (0.3 + i * 0.07) + i * 1.2;
-    const px = cx + Math.cos(angle) * orbitR;
-    const py = cy + Math.sin(angle) * orbitR;
-    const planetR = Math.max(12 * dpr, 22 * dpr - i * 1.5 * dpr);
+    const pos = p.pos || { x: 240 + i * 440, y: 270 };
+    // Apply drag offset if this goal is being dragged
+    const dragOffX = (gd && gd.id === p.id) ? gd.offsetX : 0;
+    const dragOffY = (gd && gd.id === p.id) ? gd.offsetY : 0;
+    const px = pos.x + pan.x * dpr + dragOffX;
+    const py = pos.y + pan.y * dpr + dragOffY;
+    const nodeR = 28 * dpr; // Fixed node radius
     const isSel = p.id === selId;
+    const isTopGoal = topGoalIds.includes(p.id);
+    const pct = progress(p) / 100;
+    const hasSubtasks = (p.subtasks?.length || 0) > 0 || (p.checkpoints?.length || 0) > 0;
+    const isComplete = !!p.completedAt;
 
     // Glow if selected
-    if (isSel) drawGlow(ctx, px, py, planetR * 1.5, p.color, .15);
+    if (isSel) drawGlow(ctx, px, py, nodeR * 1.5, p.color, .15);
 
-    // Planet body
+    // Top goal ring (outer ring) with orbiting dots
+    if (isTopGoal) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(px, py, nodeR + 6*dpr, 0, Math.PI * 2);
+      ctx.strokeStyle = rgba(p.color, .6);
+      ctx.lineWidth = 3*dpr;
+      ctx.stroke();
+      ctx.restore();
+
+      // Orbiting moonlets around top goals
+      for (let m = 0; m < 3; m++) {
+        const orbitAngle = t * 0.8 + m * Math.PI * 2 / 3 + i * 0.5;
+        const orbitR = (nodeR + 16 * dpr) + 4 * dpr * Math.sin(t * 0.3 + m);
+        const mx = px + Math.cos(orbitAngle) * orbitR;
+        const my = py + Math.sin(orbitAngle) * orbitR;
+        const moonSize = (1.5 + 0.8 * Math.sin(t * 0.7 + m * 2)) * dpr;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(mx, my, moonSize, 0, Math.PI * 2);
+        ctx.fillStyle = rgba(p.color, 0.3 + 0.2 * Math.sin(t + m));
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // Node body
     ctx.save();
     ctx.beginPath();
-    ctx.arc(px, py, planetR, 0, Math.PI * 2);
+    ctx.arc(px, py, nodeR, 0, Math.PI * 2);
     ctx.fillStyle = rgba(p.color, .15);
     ctx.fill();
     ctx.strokeStyle = isSel ? p.color : rgba(p.color, .5);
@@ -976,75 +1070,58 @@ export function drawConstellationPage(ctx, dpr, w, h, t, refs) {
     ctx.restore();
 
     // Progress arc
-    const pct = progress(p) / 100;
-    if (pct > 0) drawProgressArc(ctx, px, py, planetR + 3*dpr, pct, p.color, dpr);
+    if (pct > 0) drawProgressArc(ctx, px, py, nodeR + 3*dpr, pct, p.color, dpr);
+
+    // Status indicator (complete checkmark or incomplete cross)
+    if (isComplete) {
+      // Green checkmark
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(px + nodeR - 4*dpr, py - nodeR + 4*dpr, 6*dpr, 0, Math.PI * 2);
+      ctx.fillStyle = T.green;
+      ctx.fill();
+      // Checkmark path
+      ctx.strokeStyle = T.bg;
+      ctx.lineWidth = 1.5*dpr;
+      ctx.beginPath();
+      ctx.moveTo(px + nodeR - 6*dpr, py - nodeR + 4*dpr);
+      ctx.lineTo(px + nodeR - 4*dpr, py - nodeR + 6*dpr);
+      ctx.lineTo(px + nodeR - 1*dpr, py - nodeR + 2*dpr);
+      ctx.stroke();
+      ctx.restore();
+    } else if (!hasSubtasks) {
+      // Red cross for incomplete (no sub-goals set)
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(px + nodeR - 4*dpr, py - nodeR + 4*dpr, 6*dpr, 0, Math.PI * 2);
+      ctx.fillStyle = T.rose;
+      ctx.fill();
+      // Cross path
+      ctx.strokeStyle = T.bg;
+      ctx.lineWidth = 1.5*dpr;
+      ctx.beginPath();
+      ctx.moveTo(px + nodeR - 6*dpr, py - nodeR + 2*dpr);
+      ctx.lineTo(px + nodeR - 2*dpr, py - nodeR + 6*dpr);
+      ctx.moveTo(px + nodeR - 2*dpr, py - nodeR + 2*dpr);
+      ctx.lineTo(px + nodeR - 6*dpr, py - nodeR + 6*dpr);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // Title label
-    const label = p.title.length > 12 ? p.title.slice(0, 11) + '…' : p.title;
+    const label = p.title.length > 14 ? p.title.slice(0, 13) + '…' : p.title;
     ctx.save();
     ctx.font = `${7*dpr}px 'IBM Plex Mono',monospace`;
     ctx.fillStyle = isSel ? p.color : rgba(T.text, .6);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText(label, px, py + planetR + 4*dpr);
+    ctx.fillText(label, px, py + nodeR + 5*dpr);
     ctx.restore();
 
     // Hit area (circle)
-    hitAreas.push({ id: p.id, x: px/dpr, y: py/dpr, R: planetR/dpr });
+    hitAreas.push({ id: p.id, x: px/dpr, y: py/dpr, R: nodeR/dpr });
   });
 
-  // Sun (focused goal) at center
-  const sunProj = projs.find(p => p.inFocus);
-  if (sunProj) {
-    const sunR = 18 * dpr;
-    drawGlow(ctx, cx, cy, sunR * 2, sunProj.color, .2);
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, sunR, 0, Math.PI * 2);
-    ctx.fillStyle = rgba(sunProj.color, .2);
-    ctx.fill();
-    ctx.strokeStyle = sunProj.color;
-    ctx.lineWidth = 2*dpr;
-    ctx.stroke();
-    ctx.restore();
-
-    // Sun label
-    const sunLabel = sunProj.title.length > 10 ? sunProj.title.slice(0, 9) + '…' : sunProj.title;
-    ctx.save();
-    ctx.font = `700 ${8*dpr}px 'Syne',sans-serif`;
-    ctx.fillStyle = sunProj.color;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(sunLabel, cx, cy);
-    ctx.restore();
-
-    // Store sun position for click detection
-    solarSunPosRef.current = { x: cx/dpr, y: cy/dpr, R: sunR/dpr, id: sunProj.id };
-  } else {
-    // Draw a small empty sun
-    const sunR = 10 * dpr;
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, sunR, 0, Math.PI * 2);
-    ctx.fillStyle = rgba(T.accent, .08);
-    ctx.fill();
-    ctx.strokeStyle = rgba(T.accent, .2);
-    ctx.lineWidth = 1*dpr;
-    ctx.setLineDash([3*dpr, 3*dpr]);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.restore();
-
-    ctx.save();
-    ctx.font = `${6*dpr}px 'IBM Plex Mono',monospace`;
-    ctx.fillStyle = rgba(T.muted, .4);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('focus', cx, cy);
-    ctx.restore();
-
-    solarSunPosRef.current = { x: 0, y: 0, R: 0, id: null };
-  }
-
-  solarHitAreasRef.current = hitAreas;
+  goalHitAreasRef.current = hitAreas;
 }
+

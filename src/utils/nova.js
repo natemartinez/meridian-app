@@ -93,6 +93,96 @@ export function updatePlanAccuracyHistory(history, newEntry) {
   return { history: updated, movingAverage };
 }
 
+/**
+ * Infer which skills were improved based on completed task titles and descriptions.
+ * Uses keyword matching against known skill names from INITIAL_SKILLS.
+ * Returns an array of { skillName, confidence, taskTitle } objects.
+ */
+export function computeSkillImprovements(completedTasks, skillNames) {
+  if (!completedTasks?.length || !skillNames?.length) return [];
+
+  const improvements = [];
+  const skillKeywords = {};
+
+  // Build keyword map from skill names
+  skillNames.forEach(name => {
+    const keywords = name.toLowerCase()
+      .replace(/[&/]/g, ' ')
+      .split(/\s+/)
+      .filter(k => k.length > 2);
+    skillKeywords[name] = keywords;
+  });
+
+  completedTasks.forEach(task => {
+    const title = (task.title || task.detail || '').toLowerCase();
+    if (!title) return;
+
+    for (const [skillName, keywords] of Object.entries(skillKeywords)) {
+      // Check if any keyword from the skill name appears in the task title
+      const matchCount = keywords.filter(kw => title.includes(kw)).length;
+      if (matchCount > 0) {
+        // Confidence based on how many keywords matched
+        const confidence = Math.min(1, matchCount / keywords.length);
+        improvements.push({
+          skillName,
+          confidence: Math.round(confidence * 100) / 100,
+          taskTitle: task.title || task.detail || '',
+        });
+      }
+    }
+  });
+
+  // Deduplicate by keeping highest confidence per skill
+  const bestPerSkill = {};
+  improvements.forEach(imp => {
+    const existing = bestPerSkill[imp.skillName];
+    if (!existing || imp.confidence > existing.confidence) {
+      bestPerSkill[imp.skillName] = imp;
+    }
+  });
+
+  return Object.values(bestPerSkill).sort((a, b) => b.confidence - a.confidence);
+}
+
+/**
+ * Identify skills that have been neglected (not applied recently).
+ * Uses skill data to determine when a skill was last practiced.
+ * Returns an array of { skillName, groupName, groupColor, daysSinceLastUse, hours, status } objects.
+ */
+export function getNeglectedSkills(skills) {
+  if (!skills) return [];
+
+  const neglected = [];
+  const now = Date.now();
+  const DAY_MS = 86_400_000;
+
+  for (const [groupName, group] of Object.entries(skills)) {
+    for (const [skillName, data] of Object.entries(group.skills || {})) {
+      const lastApplied = data.lastApplied ? new Date(data.lastApplied).getTime() : null;
+      const daysSince = lastApplied ? (now - lastApplied) / DAY_MS : Infinity;
+
+      // A skill is neglected if:
+      // 1. Has been applied before (has hours) but not in the last 14 days
+      // 2. OR has never been applied (still at 0 hours) and was created more than 7 days ago
+      const isNeglected = (data.hours > 0 && daysSince > 14) ||
+                          (data.hours === 0 && daysSince > 7 && daysSince !== Infinity);
+
+      if (isNeglected) {
+        neglected.push({
+          skillName,
+          groupName,
+          groupColor: group.color,
+          daysSinceLastUse: Math.round(daysSince),
+          hours: data.hours || 0,
+          status: data.hours > 0 ? 'stale' : 'unused',
+        });
+      }
+    }
+  }
+
+  return neglected.sort((a, b) => b.daysSinceLastUse - a.daysSinceLastUse);
+}
+
 export const NOVA_DEFAULT = {
   syncScore: 0,
   syncEvents: [],

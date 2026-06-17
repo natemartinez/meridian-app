@@ -18,9 +18,9 @@ const VALID_PRESENTATIONS = ['toast', 'waypoint', 'inline'];
 const VALID_SOURCES = ['user_action', 'performance_signal', 'app_state_change', 'time_based'];
 
 describe('PATTERNS', () => {
-  it('exports an array of 18 patterns', () => {
+  it('exports an array of 22 patterns', () => {
     expect(Array.isArray(PATTERNS)).toBe(true);
-    expect(PATTERNS).toHaveLength(18);
+    expect(PATTERNS).toHaveLength(22);
   });
 
   it('all patterns have unique IDs', () => {
@@ -119,7 +119,7 @@ describe('PATTERNS', () => {
     });
   });
 
-  it('patterns are ordered by category (A, B, C, D, E)', () => {
+  it('patterns are ordered by category (A, B, C, D, E, F)', () => {
     const categories = PATTERNS.map(p => p.id.charAt(0));
     const expectedOrder = categories.slice().sort();
     expect(categories).toEqual(expectedOrder);

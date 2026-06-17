@@ -9,7 +9,7 @@ export default function GoalDetailPanel({
   toggleSubtask, toggleCheckpoint, deleteSubtask, deleteCheckpoint,
   addSubtask, addCheckpoint, completeGoal, renameGoal,
   closeWaypoint, setConfirmDelete,
-  sunId, setSunId,
+  topGoals, onToggleTopGoal,
   companionLoading, aiMsg, companionName,
   checkIn, suggestSubtask,
 }) {
@@ -117,14 +117,16 @@ export default function GoalDetailPanel({
             style={{ marginTop:10, width:'100%', background:`${T.green}12`, border:`1px solid ${T.green}40`, borderRadius:6, padding:'7px', color:T.green, fontFamily:"'Syne',sans-serif", fontSize:10, fontWeight:700, cursor:'pointer', letterSpacing:'.05em' }}
           >✓ Mark Complete</button>
         )}
-        {sunId !== proj.id && (
+        {!topGoals.includes(proj.id) && (
           <button
-            onClick={() => setSunId(proj.id)}
+            onClick={() => onToggleTopGoal(proj.id)}
             style={{ marginTop:10, width:'100%', background:`${T.accent}12`, border:`1px solid ${T.accent}35`, borderRadius:6, padding:'7px', color:T.accent, fontFamily:"'Syne',sans-serif", fontSize:10, fontWeight:700, cursor:'pointer', letterSpacing:'.05em' }}
-          >☀ Make Focus Sun</button>
+          >◎ Mark as Top Goal</button>
         )}
-        {sunId === proj.id && (
-          <div style={{ marginTop:10, textAlign:'center', fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:T.accent, opacity:.7 }}>★ This is the Focus Sun</div>
+        {topGoals.includes(proj.id) && (
+          <div style={{ marginTop:10, textAlign:'center', fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:T.accent, opacity:.7 }}>
+            ★ Top Goal · <span style={{ cursor:'pointer', textDecoration:'underline' }} onClick={() => onToggleTopGoal(proj.id)}>Remove</span>
+          </div>
         )}
       </div>
       <div className="wp-ai">

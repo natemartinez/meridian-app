@@ -6,11 +6,13 @@
  *   - 35% acceptance rate (tasks accepted vs total decisions)
  *   - 45% completion rate (tasks completed vs accepted)
  *   - 20% richness (meaningful events / saturation point of 40)
+ * - computeSkillImprovements: keyword-based skill inference from completed tasks
+ * - getNeglectedSkills: identifies skills not used recently
  * - NOVA_DEFAULT: default state object
  */
 
 import { describe, it, expect } from 'vitest';
-import { computePlanningConfidence, NOVA_DEFAULT } from './nova.js';
+import { computePlanningConfidence, computeSkillImprovements, getNeglectedSkills, NOVA_DEFAULT } from './nova.js';
 
 // ============================================================
 // computePlanningConfidence
@@ -140,5 +142,191 @@ describe('NOVA_DEFAULT', () => {
       pendingInsights: [],
       planAccuracy: { history: [], movingAverage: null },
     });
+  });
+});
+
+// ============================================================
+// computeSkillImprovements
+// ============================================================
+describe('computeSkillImprovements', () => {
+  const skillNames = [
+    'JavaScript/TypeScript',
+    'React & Ecosystem',
+    'Python',
+    'Data Structures',
+    'Algorithms',
+    'System Design',
+    'APIs & Services',
+    'Databases & Storage',
+    'Problem Solving',
+  ];
+
+  it('returns empty array for undefined/null/empty tasks', () => {
+    expect(computeSkillImprovements(undefined, skillNames)).toEqual([]);
+    expect(computeSkillImprovements(null, skillNames)).toEqual([]);
+    expect(computeSkillImprovements([], skillNames)).toEqual([]);
+  });
+
+  it('returns empty array for undefined/null/empty skill names', () => {
+    const tasks = [{ title: 'Build a React component' }];
+    expect(computeSkillImprovements(tasks, undefined)).toEqual([]);
+    expect(computeSkillImprovements(tasks, null)).toEqual([]);
+    expect(computeSkillImprovements(tasks, [])).toEqual([]);
+  });
+
+  it('detects skill match from task title keywords', () => {
+    const tasks = [{ title: 'Refactor the React component to use hooks' }];
+    const result = computeSkillImprovements(tasks, skillNames);
+    expect(result.length).toBeGreaterThan(0);
+    const match = result.find(r => r.skillName === 'React & Ecosystem');
+    expect(match).toBeDefined();
+    expect(match.confidence).toBeGreaterThan(0);
+    expect(match.taskTitle).toBe('Refactor the React component to use hooks');
+  });
+
+  it('detects JavaScript/TypeScript from task mentioning JS', () => {
+    const tasks = [{ title: 'Fix TypeScript type errors in the API layer' }];
+    const result = computeSkillImprovements(tasks, skillNames);
+    const match = result.find(r => r.skillName === 'JavaScript/TypeScript');
+    expect(match).toBeDefined();
+    expect(match.confidence).toBeGreaterThan(0);
+  });
+
+  it('detects Python from task mentioning python', () => {
+    const tasks = [{ title: 'Write a Python script to process CSV data' }];
+    const result = computeSkillImprovements(tasks, skillNames);
+    const match = result.find(r => r.skillName === 'Python');
+    expect(match).toBeDefined();
+    expect(match.confidence).toBeGreaterThan(0);
+  });
+
+  it('detects multiple skills from a single task', () => {
+    const tasks = [{ title: 'Design scalable APIs with databases optimization' }];
+    const result = computeSkillImprovements(tasks, skillNames);
+    const apiMatch = result.find(r => r.skillName === 'APIs & Services');
+    const dbMatch = result.find(r => r.skillName === 'Databases & Storage');
+    expect(apiMatch).toBeDefined();
+    expect(dbMatch).toBeDefined();
+  });
+
+  it('returns best match per skill (highest confidence)', () => {
+    const tasks = [
+      { title: 'React frontend work' },
+      { title: 'React Native mobile app' },
+    ];
+    const result = computeSkillImprovements(tasks, skillNames);
+    const match = result.find(r => r.skillName === 'React & Ecosystem');
+    expect(match).toBeDefined();
+    // Should only have one entry per skill
+    const matches = result.filter(r => r.skillName === 'React & Ecosystem');
+    expect(matches).toHaveLength(1);
+  });
+
+  it('handles tasks with detail field instead of title', () => {
+    const tasks = [{ detail: 'Implement new algorithms for sorting data' }];
+    const result = computeSkillImprovements(tasks, skillNames);
+    const match = result.find(r => r.skillName === 'Algorithms');
+    expect(match).toBeDefined();
+  });
+
+  it('returns results sorted by confidence descending', () => {
+    const tasks = [
+      { title: 'Python data processing with algorithms' },
+      { title: 'Build React UI components' },
+    ];
+    const result = computeSkillImprovements(tasks, skillNames);
+    for (let i = 1; i < result.length; i++) {
+      expect(result[i].confidence).toBeLessThanOrEqual(result[i - 1].confidence);
+    }
+  });
+});
+
+// ============================================================
+// getNeglectedSkills
+// ============================================================
+describe('getNeglectedSkills', () => {
+  const DAY_MS = 86_400_000;
+  const now = Date.now();
+
+  function makeSkill(hours, daysSinceLastUse) {
+    return {
+      hours,
+      lastApplied: daysSinceLastUse == null
+        ? null
+        : new Date(now - daysSinceLastUse * DAY_MS).toISOString(),
+      evidenceCount: 0,
+      evidence: [],
+      notes: '',
+    };
+  }
+
+  const mockSkills = {
+    'Core CS': {
+      color: '#53aaff',
+      skills: {
+        'Data Structures': makeSkill(10, 20),   // neglected (20 days > 14)
+        'Algorithms':      makeSkill(5, 5),      // fine (5 days < 14)
+        'System Design':   makeSkill(0, 10),     // unused, 10 days > 7, so neglected
+      },
+    },
+    Languages: {
+      color: '#f0b429',
+      skills: {
+        'Python':          makeSkill(0, null),   // never used, no lastApplied
+        'JavaScript/TypeScript': makeSkill(15, 2), // fine (2 days < 14)
+      },
+    },
+  };
+
+  it('returns empty array for undefined/null skills', () => {
+    expect(getNeglectedSkills(undefined)).toEqual([]);
+    expect(getNeglectedSkills(null)).toEqual([]);
+  });
+
+  it('identifies neglected skills based on lastApplied threshold', () => {
+    const result = getNeglectedSkills(mockSkills);
+    // Data Structures: 10 hours, 20 days since use -> neglected (>14 days)
+    const ds = result.find(r => r.skillName === 'Data Structures');
+    expect(ds).toBeDefined();
+    expect(ds.daysSinceLastUse).toBe(20);
+    expect(ds.status).toBe('stale');
+  });
+
+  it('marks unused skills (0 hours) as neglected after 7 days', () => {
+    const result = getNeglectedSkills(mockSkills);
+    // System Design: 0 hours, 10 days since use -> neglected (>7 days for unused)
+    const sd = result.find(r => r.skillName === 'System Design');
+    expect(sd).toBeDefined();
+    expect(sd.status).toBe('unused');
+  });
+
+  it('does not flag skills used recently', () => {
+    const result = getNeglectedSkills(mockSkills);
+    const algo = result.find(r => r.skillName === 'Algorithms');
+    expect(algo).toBeUndefined();
+    const ts = result.find(r => r.skillName === 'JavaScript/TypeScript');
+    expect(ts).toBeUndefined();
+  });
+
+  it('handles skills that were never used at all', () => {
+    const result = getNeglectedSkills(mockSkills);
+    // Python: 0 hours, null lastApplied -> not flagged (no lastApplied means never used)
+    const py = result.find(r => r.skillName === 'Python');
+    expect(py).toBeUndefined();
+  });
+
+  it('returns results sorted by daysSinceLastUse descending', () => {
+    const result = getNeglectedSkills(mockSkills);
+    for (let i = 1; i < result.length; i++) {
+      expect(result[i].daysSinceLastUse).toBeLessThanOrEqual(result[i - 1].daysSinceLastUse);
+    }
+  });
+
+  it('includes group metadata in results', () => {
+    const result = getNeglectedSkills(mockSkills);
+    const ds = result.find(r => r.skillName === 'Data Structures');
+    expect(ds.groupName).toBe('Core CS');
+    expect(ds.groupColor).toBe('#53aaff');
+    expect(typeof ds.hours).toBe('number');
   });
 });

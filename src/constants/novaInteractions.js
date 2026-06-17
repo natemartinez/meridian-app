@@ -423,6 +423,91 @@ const E2_GOAL_INSIGHT = {
   },
 };
 
+// ── Category F: Skill Development ──
+
+const F1_SKILL_IMPROVED = {
+  id: 'F1_skill_improved',
+  trigger: {
+    source: 'performance_signal',
+    event: 'skill_improved',
+    conditions: {},
+  },
+  cooldown: { type: 'per-pattern', durationMs: 120_000 },
+  priority: 'low',
+  presentation: 'toast',
+  template: {
+    title: 'Skill building! 🧠',
+    body: 'Your work on "{taskTitle}" suggests you\'re practicing "{skillName}". Keep it up!',
+    action: { label: 'View Skills', type: 'open_skills', payload: {} },
+  },
+  variables: {
+    taskTitle: { source: 'event', path: 'taskTitle' },
+    skillName: { source: 'event', path: 'skillName' },
+  },
+};
+
+const F2_SKILL_NEGLECTED = {
+  id: 'F2_skill_neglected',
+  trigger: {
+    source: 'performance_signal',
+    event: 'skill_neglected',
+    conditions: {},
+  },
+  cooldown: { type: 'per-pattern', durationMs: 600_000 },
+  priority: 'low',
+  presentation: 'toast',
+  template: {
+    title: 'Skill getting rusty ⚠️',
+    body: 'You haven\'t practiced "{skillName}" in {daysSince} days. A quick refresher could help maintain your edge.',
+    action: { label: 'Open Skills', type: 'open_skills', payload: {} },
+  },
+  variables: {
+    skillName: { source: 'event', path: 'skillName' },
+    daysSince: { source: 'event', path: 'daysSince' },
+  },
+};
+
+const F3_MULTIPLE_SKILLS_NEGLECTED = {
+  id: 'F3_multiple_skills_neglected',
+  trigger: {
+    source: 'performance_signal',
+    event: 'skills_neglected_batch',
+    conditions: {},
+  },
+  cooldown: { type: 'per-pattern', durationMs: 900_000 },
+  priority: 'medium',
+  presentation: 'toast',
+  template: {
+    title: 'Several skills need attention 📋',
+    body: 'You have {neglectedCount} skills that haven\'t been used recently. Consider rotating them back into your workflow.',
+    action: { label: 'Review Skills', type: 'open_skills', payload: {} },
+  },
+  variables: {
+    neglectedCount: { source: 'event', path: 'count' },
+  },
+};
+
+const F4_SKILL_MILESTONE = {
+  id: 'F4_skill_milestone',
+  trigger: {
+    source: 'performance_signal',
+    event: 'skill_milestone',
+    conditions: {},
+  },
+  cooldown: { type: 'per-pattern', durationMs: 300_000 },
+  priority: 'medium',
+  presentation: 'toast',
+  template: {
+    title: 'Skill milestone! 🏆',
+    body: 'You\'ve reached a new stage in "{skillName}": {stage}. That\'s real progress!',
+    action: { label: 'View Progress', type: 'open_skills', payload: {} },
+  },
+  variables: {
+    skillName: { source: 'event', path: 'skillName' },
+    stage: { source: 'event', path: 'stage' },
+  },
+};
+
 // ── Export all patterns ──
 
 export const PATTERNS = [
@@ -444,4 +529,8 @@ export const PATTERNS = [
   D4_LOW_COMPLETION,
   E1_PAGE_TIP,
   E2_GOAL_INSIGHT,
+  F1_SKILL_IMPROVED,
+  F2_SKILL_NEGLECTED,
+  F3_MULTIPLE_SKILLS_NEGLECTED,
+  F4_SKILL_MILESTONE,
 ];
